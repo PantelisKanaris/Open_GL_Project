@@ -11,9 +11,132 @@
 bool m_fullscreen;				
 bool m_culling = false;			// Culling Enabled is Mandatory for this assignment do not change
 float m_aspect = 1;
+CameraPosition m_camera;
 
 const float m_PI = 3.1415926535897932384626433832795028;
 const float m_epsilon = 0.001;
+
+float m_moonAngle = 0.0f; // Angle for moon orbit
+
+
+void CreateTheCenterPlanet(void)
+{
+	// Create the central planet at the origin
+	glPushMatrix();
+	glColor3f(0.0f, 0.0f, 1.0f); // Blue color for the planet
+	glutSolidSphere(2.0, 50, 50); // Radius 2.0, 50 slices and stacks
+	glPopMatrix();
+}
+
+void CreateTheMoon(float angle)
+{
+	// Create the moon orbiting the planet
+	glPushMatrix();
+	glColor3f(0.5f, 0.5f, 0.5f); // Gray color for the moon
+	glRotatef(angle, 0.0f, 0.0f, 1.0f); // Rotate around the planet
+	glTranslatef(10.0f, 0.0f, 0.0f); // Position the moon 5 units away from the planet
+	glutSolidSphere(0.5, 30, 30); // Radius 0.5, 30 slices and stacks
+	glPopMatrix();
+}
+
+
+void CreatePropeller(float angleDeg, float hubRadius = 0.35f,float bladeSpan = 2.2f, float bladeThickness = 0.3f)
+{
+	glPushMatrix();
+
+	// Spin around airplane's +X axis
+	glRotatef(angleDeg, 1.f, 0.f, 0.f);
+
+	// Blade 1 (move a hair away from hub to avoid z-fighting look)
+	glPushMatrix();
+	glTranslatef(0.0f, 0.0f, 0.02f);
+	glColor3f(0.15f, 0.15f, 0.15f);
+	glScalef(bladeThickness, bladeSpan, 0.3f);
+	glutSolidCube(1.0);
+	glPopMatrix();
+
+	// Blade 2 (90°)
+	glPushMatrix();
+	glRotatef(90.f, 1.f, 0.f, 0.f);
+	glTranslatef(0.0f, 0.0f, 0.02f);
+	glScalef(bladeThickness, bladeSpan, 0.3f);
+	glutSolidCube(1.0);
+	glPopMatrix();
+
+	glPopMatrix();
+}
+
+void CreateAirplane(float propAngleDeg)
+{
+
+	static const float kBodyRadius = 2.0f;   // base sphere radius
+	static const float kBodyScaleX = 3.0f;   // stretch along +X (length)
+	static const float kBodyScaleY = 1.0f;   // vertical thickness
+	static const float kBodyScaleZ = 1.0f;   // width
+	static const float kHalfLength = kBodyRadius * kBodyScaleX; 
+	static const float kMidX = 0.0f;   
+	static const float Width = 0.4f; // offset from origin if needed 
+
+	// ===== FUSELAGE: single stretched sphere (ellipsoid) =====
+	glPushMatrix();
+	glColor3f(0.90f, 0.15f, 0.15f);      // bright red
+	glScalef(kBodyScaleX, kBodyScaleY, kBodyScaleZ);
+	glutSolidSphere(kBodyRadius, 32, 32);
+	glPopMatrix();
+
+	// ===== MAIN WINGS (centered) =====
+	glPushMatrix();
+	glColor3f(0.10f, 0.25f, 0.90f);      // vivid blue
+	glTranslatef(kMidX + 0.6f, 0.0f, 0.0f); // slight forward placement
+	glScalef(3.0f, Width, 12.0f);        // chord, thickness, span
+	glutSolidCube(1.0);
+	glPopMatrix();
+
+	// ===== WING ENGINES + PROPS (both sides) =====
+	// Right engine + prop
+	glPushMatrix();
+	glTranslatef(kMidX + 1.0f, 0.0f, 6.0f);  // out on the wing, slightly forward
+	glColor3f(0.85f, 0.85f, 0.88f);
+	glutSolidSphere(1.2f, 18, 18);           // nacelle
+	glTranslatef(1.2f, 0.0f, 0.0f);          // prop in front
+	CreatePropeller(propAngleDeg);
+	glPopMatrix();
+
+	// Left engine + prop
+	glPushMatrix();
+	glTranslatef(kMidX + 1.0f, 0.0f, -6.0f);
+	glColor3f(0.85f, 0.85f, 0.88f);
+	glutSolidSphere(1.2f, 18, 18);
+	glTranslatef(1.2f, 0.0f, 0.0f);
+	CreatePropeller(propAngleDeg);
+	glPopMatrix();
+
+	// ===== HORIZONTAL STABILIZERS (tail wings) =====
+	glPushMatrix();
+	glColor3f(0.12f, 0.30f, 0.95f);
+	glTranslatef(-kHalfLength - 0.3f, 0.25f, 0.0f); // push clearly behind the fuselage
+	glScalef(1.6f, Width, 4.2f);
+	glutSolidCube(1.0);
+	glPopMatrix();
+
+	// ===== VERTICAL TAIL FIN =====
+	glPushMatrix();
+	glColor3f(0.10f, 0.85f, 0.20f);
+	glTranslatef(-kHalfLength - 0.5f, 1.3f, 0.0f);  // a bit farther back and above
+	glScalef(0.28f, 2.0f, 0.6f);                    // tall & thin
+	glutSolidCube(1.0);
+	glPopMatrix();
+
+	// ===== NOSE PROP (front centerline) =====
+	glPushMatrix();
+	glTranslatef(+kHalfLength, 0.0f, 0.0f);
+	glColor3f(0.85f, 0.85f, 0.88f);
+	glutSolidSphere(0.5f, 18, 18);
+	glTranslatef(0.6f, 0.0f, 0.0f);  // in front of nose so it’s clearly visible
+	CreatePropeller(propAngleDeg);
+	glPopMatrix();
+
+}
 
 
 void InitializeWindow(int windowWidth , int windowHeight)
@@ -57,18 +180,13 @@ bool init(void)
 	return true;
 }
 
-void PositionCamera(){
+void PositionCamera()
+{
 
-	glMatrixMode(GL_PROJECTION);     // Select The Projection Matrix
-
-	glLoadIdentity();                // Reset The Projection Matrix
-	// Calculate The Aspect Ratio And Set The Clipping Volume
+	glMatrixMode(GL_PROJECTION);
+	glLoadIdentity();
 	gluPerspective(45.0f, m_aspect, 0.1, 100.0);
-
-	// Position The Camera to look at the origin 
-	gluLookAt(0.0f,0.0f,30.0f,0.0f,0.0f,0.0f,0.0f,1.0f,0.0f);
-
-	glMatrixMode(GL_MODELVIEW);      // Select The Modelview Matrix
+	glMatrixMode(GL_MODELVIEW);
 
 }
 
@@ -90,8 +208,14 @@ void KeyboardHandler(unsigned char key, int x, int y)
 {
 	switch (key) {
 		case 'w':
+			m_camera.m_pos = vector3d(-20.0f, 0.0f, 0.0f);
+			m_camera.m_view = vector3d(20.0f, 0.0f, 0.0f); // look at origin
+			m_camera.m_up = vector3d(0.0f, 1.0f, 0.0f);   // Y is up
 			break;
 		case 's':
+			m_camera.m_pos = vector3d(0.0f, 0.0f, 60.0f);
+			m_camera.m_view = vector3d(0.0f, 0.0f, 0.0f);
+			m_camera.m_up = vector3d(0.0f, 1.0f, 0.0f);   // Y is up
 			break;
 		case 'd':
 			break;
@@ -110,6 +234,14 @@ void KeyboardHandler(unsigned char key, int x, int y)
 		break;
 	}
 	glutPostRedisplay();
+}
+
+void RenderCameraView()
+{
+	// Position The Camera to look at the origin 
+	gluLookAt(m_camera.m_pos.x(), m_camera.m_pos.y(), m_camera.m_pos.z(),
+			  m_camera.m_view.x(), m_camera.m_view.y(), m_camera.m_view.z(),
+			  m_camera.m_up.x(), m_camera.m_up.y(), m_camera.m_up.z());
 }
 
 // Our Keyboard Handler For Special Keys (Like Arrow Keys And Function Keys)
@@ -186,6 +318,15 @@ int main(int argc, char** argv)
 	return 0;
 }
 
+void Scene()
+{
+	m_moonAngle = m_moonAngle + 0.1;
+	// Draw the scene
+	CreateTheCenterPlanet();
+	CreateTheMoon(m_moonAngle);
+	CreateAirplane(0);
+}
+
 // Our Rendering Is Done Here
 void Render(void)   
 {
@@ -202,9 +343,9 @@ void Render(void)
 	}
 
 	glLoadIdentity();
+	RenderCameraView();
+	CreateAirplane(0);
 
-
-	glLoadIdentity();
     // Swap The Buffers To Make Our Rendering Visible
     glutSwapBuffers();
 	glutPostRedisplay(); //animation

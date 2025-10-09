@@ -20,6 +20,18 @@ struct vector3d
 	float X, Y, Z;
 
 	inline vector3d(void) {}
+
+	// ===== Getters =====
+	inline float x() const { return X; }
+	inline float y() const { return Y; }
+	inline float z() const { return Z; }
+
+	// ===== Setters=====
+	inline void setX(float x) { X = x; }
+	inline void setY(float y) { Y = y; }
+	inline void setZ(float z) { Z = z; }
+
+
 	inline vector3d(const float x, const float y, const float z)
 	{
 		X = x; Y = y; Z = z;
@@ -38,6 +50,20 @@ struct vector3d
 	inline float Dot(const vector3d& A) const
 	{
 		return A.X * X + A.Y * Y + A.Z * Z;
+	}
+};
+
+
+struct CameraPosition
+{
+	vector3d m_pos;      // Camera position
+	vector3d m_view;     // Camera view
+	vector3d m_up;       // Camera up vector
+	CameraPosition()
+	{
+		m_pos = vector3d(0.0f, 0.0f, 0.0f);
+		m_view = vector3d(0.0f, 0.0f, 0.0f);
+		m_up = vector3d(0.0f, 1.0f, 0.0f);
 	}
 };
 
