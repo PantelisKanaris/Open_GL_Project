@@ -15,6 +15,18 @@ float m_aspect = 1;
 const float m_PI = 3.1415926535897932384626433832795028;
 const float m_epsilon = 0.001;
 
+
+void InitializeWindow(int windowWidth , int windowHeight)
+{
+	int screenWidth = glutGet(GLUT_SCREEN_WIDTH);
+	int screenHeight = glutGet(GLUT_SCREEN_HEIGHT);
+	glutInitWindowSize(windowWidth, windowHeight);
+	// Center the window
+	int centerX = (screenWidth - windowWidth) / 2;
+	int centerY = (screenHeight - windowHeight) / 2;
+	glutInitWindowPosition(centerX, centerY); // Window Position
+}
+
 void InitializeLights(void) {
 
 	glEnable(GL_LIGHT0);	
@@ -29,7 +41,7 @@ bool init(void)
 {
     glPixelStorei(GL_UNPACK_ALIGNMENT, 1);             // Pixel Storage Mode To Byte Alignment
 	glEnable(GL_TEXTURE_2D);                           // Enable Texture Mapping 
-    glClearColor(0.5f, 0.5f, 0.5f, 0.5f);			   // Gray Background (CHANGED)
+    glClearColor(0.0f, 0.0f, 0.0f, 0.0f);			   // Gray Background (CHANGED)
     glClearDepth(1.0f);								   // Depth Buffer Setup
     glDepthFunc(GL_LEQUAL);							   // The Type Of Depth Testing To Do
     glEnable(GL_DEPTH_TEST);						   // Enables Depth Testing
@@ -158,8 +170,7 @@ int main(int argc, char** argv)
 {
 	glutInit(&argc, argv);                          
 	glutInitDisplayMode(GLUT_DEPTH | GLUT_RGBA | GLUT_DOUBLE); 
-	glutInitWindowPosition(100, 100); // Window Position
-	glutInitWindowSize(500, 500); // Window Size If We Start In Windowed Mode
+	InitializeWindow(1000,1000);
 	glutCreateWindow("EPL426"); // Window Title
 	if (!init()) {                                   // Our Initialization
 		fprintf(stderr,"Initialization failed.");

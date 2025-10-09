@@ -6,12 +6,12 @@
 #include <windows.h>         
 #include <gl/glut.h>       
 #include <time.h>
-void render(void);
-void initLights(void);
+void Render(void);
+void InitializeLights(void);
 bool init(void);
-void reshape(int w, int h);
-void keyboard(unsigned char key, int x, int y);
-void special_keys(int a_keys, int x, int y);
+void Reshape(int w, int h);
+void KeyboardHandler(unsigned char key, int x, int y);
+void SpecialKeyHandler(int a_keys, int x, int y);
 void drawAxes();
 
 
