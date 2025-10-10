@@ -11,12 +11,14 @@
 bool m_fullscreen;				
 bool m_culling = false;			// Culling Enabled is Mandatory for this assignment do not change
 float m_aspect = 1;
+
 CameraPosition m_camera;
 
 const float m_PI = 3.1415926535897932384626433832795028;
 const float m_epsilon = 0.001;
 
 float m_moonAngle = 0.0f; // Angle for moon orbit
+float m_ProperllerAngle = 0.0f; // Angle for propeller rotation
 
 
 void CreateTheCenterPlanet(void)
@@ -24,19 +26,26 @@ void CreateTheCenterPlanet(void)
 	// Create the central planet at the origin
 	glPushMatrix();
 	glColor3f(0.0f, 0.0f, 1.0f); // Blue color for the planet
-	glutSolidSphere(2.0, 50, 50); // Radius 2.0, 50 slices and stacks
+	glutSolidSphere(5.0, 50, 50); // Radius 2.0, 50 slices and stacks
 	glPopMatrix();
 }
 
-void CreateTheMoon(float angle)
+void CreateTheMoon()
+{
+	// Create the moon orbiting the planet
+	glColor3f(0.5f, 0.5f, 0.5f); // Gray color for the moon
+	glutSolidSphere(3.0, 30, 30); // Radius 0.5, 30 slices and stacks
+}
+
+void PositionMoon(float angle)
 {
 	// Create the moon orbiting the planet
 	glPushMatrix();
-	glColor3f(0.5f, 0.5f, 0.5f); // Gray color for the moon
 	glRotatef(angle, 0.0f, 0.0f, 1.0f); // Rotate around the planet
-	glTranslatef(10.0f, 0.0f, 0.0f); // Position the moon 5 units away from the planet
-	glutSolidSphere(0.5, 30, 30); // Radius 0.5, 30 slices and stacks
+	glTranslatef(20.0f, 0.0f, 0.0f); // Position the moon 5 units away from the planet
+	CreateTheMoon();
 	glPopMatrix();
+
 }
 
 
@@ -138,6 +147,18 @@ void CreateAirplane(float propAngleDeg)
 
 }
 
+void PositionAirplane(float angle)
+{
+	// Create the moon orbiting the planet
+	glPushMatrix();
+	glRotatef(angle, 0.0f, 0.0f, 1.0f); // Rotate around the planet
+	glTranslatef(10.0f, 0.0f, 0.0f); // Position the airplane 5 units away from the planet
+	glRotatef(90.0f, 0.0f, 0.0f, 1.0f); // Rotate to face forward along +X axis
+	glScalef(0.2f, 0.2f, 0.2f); // Scale down the airplane
+	CreateAirplane(m_ProperllerAngle);
+	glPopMatrix();
+}
+
 
 void InitializeWindow(int windowWidth , int windowHeight)
 {
@@ -213,7 +234,7 @@ void KeyboardHandler(unsigned char key, int x, int y)
 			m_camera.m_up = vector3d(0.0f, 1.0f, 0.0f);   // Y is up
 			break;
 		case 's':
-			m_camera.m_pos = vector3d(0.0f, 0.0f, 60.0f);
+			m_camera.m_pos = vector3d(0.0f, 0.0f, 100.0f);
 			m_camera.m_view = vector3d(0.0f, 0.0f, 0.0f);
 			m_camera.m_up = vector3d(0.0f, 1.0f, 0.0f);   // Y is up
 			break;
@@ -318,13 +339,14 @@ int main(int argc, char** argv)
 	return 0;
 }
 
-void Scene()
+void RenderScene()
 {
 	m_moonAngle = m_moonAngle + 0.1;
+	m_ProperllerAngle = m_ProperllerAngle + 0.5;
 	// Draw the scene
 	CreateTheCenterPlanet();
-	CreateTheMoon(m_moonAngle);
-	CreateAirplane(0);
+	PositionMoon(m_moonAngle);
+	PositionAirplane(m_moonAngle);
 }
 
 // Our Rendering Is Done Here
@@ -344,7 +366,7 @@ void Render(void)
 
 	glLoadIdentity();
 	RenderCameraView();
-	CreateAirplane(0);
+	RenderScene();
 
     // Swap The Buffers To Make Our Rendering Visible
     glutSwapBuffers();
