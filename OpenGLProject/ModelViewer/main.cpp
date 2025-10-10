@@ -135,11 +135,20 @@ void CreateAirplane(float propAngleDeg)
 
 }
 
-void CreateSun(void)
+void CreateSun()
 {
-	// Create the sun at the origin
-	glColor3f(1.0f, 1.0f, 0.0f); // Yellow color for the sun
-	glutSolidSphere(10.0, 50, 50); // Radius 2.0, 50 slices and stacks
+	glEnable(GL_BLEND);
+	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+	float baseRadius = 10.0f;
+	float baseAlpha = 1.0f;
+
+		for(int i=0; i<4; i++)
+		{
+			float currentRadius = baseRadius + i * 2.0f; // Increase radius for each layer
+			float currentAlpha = baseAlpha - i * 0.2f;   // Decrease alpha for each layer
+			glColor4f(1.0f, 1.0f, 0.0f, currentAlpha); // Yellow color with varying alpha
+			glutSolidSphere(currentRadius, 50, 50); // Draw sphere with current radius
+		}
 }
 
 
