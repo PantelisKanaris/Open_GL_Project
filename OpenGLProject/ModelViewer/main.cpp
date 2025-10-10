@@ -19,7 +19,7 @@ const float m_epsilon = 0.001;
 
 float m_moonAngle = 0.0f; // Angle for moon orbit
 float m_ProperllerAngle = 0.0f; // Angle for propeller rotation
-
+float m_DistanceOfPlanets = 20.0f; //Distance for planet orbit
 
 void CreateTheCenterPlanet(void)
 {
@@ -37,19 +37,7 @@ void CreateTheMoon()
 	glutSolidSphere(3.0, 30, 30); // Radius 0.5, 30 slices and stacks
 }
 
-void PositionMoon(float angle)
-{
-	// Create the moon orbiting the planet
-	glPushMatrix();
-	glRotatef(angle, 0.0f, 0.0f, 1.0f); // Rotate around the planet
-	glTranslatef(20.0f, 0.0f, 0.0f); // Position the moon 5 units away from the planet
-	CreateTheMoon();
-	glPopMatrix();
-
-}
-
-
-void CreatePropeller(float angleDeg, float hubRadius = 0.35f,float bladeSpan = 2.2f, float bladeThickness = 0.3f)
+void CreatePropeller(float angleDeg, float hubRadius = 0.35f, float bladeSpan = 2.2f, float bladeThickness = 0.3f)
 {
 	glPushMatrix();
 
@@ -82,8 +70,8 @@ void CreateAirplane(float propAngleDeg)
 	static const float kBodyScaleX = 3.0f;   // stretch along +X (length)
 	static const float kBodyScaleY = 1.0f;   // vertical thickness
 	static const float kBodyScaleZ = 1.0f;   // width
-	static const float kHalfLength = kBodyRadius * kBodyScaleX; 
-	static const float kMidX = 0.0f;   
+	static const float kHalfLength = kBodyRadius * kBodyScaleX;
+	static const float kMidX = 0.0f;
 	static const float Width = 0.4f; // offset from origin if needed 
 
 	// ===== FUSELAGE: single stretched sphere (ellipsoid) =====
@@ -147,6 +135,37 @@ void CreateAirplane(float propAngleDeg)
 
 }
 
+void CreateSun(void)
+{
+	// Create the sun at the origin
+	glColor3f(1.0f, 1.0f, 0.0f); // Yellow color for the sun
+	glutSolidSphere(10.0, 50, 50); // Radius 2.0, 50 slices and stacks
+}
+
+
+void PositionSun(float angle)
+{
+	// Create the moon orbiting the planet
+	glPushMatrix();
+	glRotatef(angle, 0.0f, 0.0f, 1.0f); // Rotate around the planet
+	glTranslatef(-m_DistanceOfPlanets *1.5, 0.0f, 0.0f); // Position the moon 5 units away from the planet
+	CreateSun();
+	glPopMatrix();
+}
+
+
+
+void PositionMoon(float angle)
+{
+	// Create the moon orbiting the planet
+	glPushMatrix();
+	glRotatef(angle, 0.0f, 0.0f, 1.0f); // Rotate around the planet
+	glTranslatef(m_DistanceOfPlanets, 0.0f, 0.0f); // Position the moon 5 units away from the planet
+	CreateTheMoon();
+	glPopMatrix();
+
+}
+
 void PositionAirplane(float angle)
 {
 	// Create the moon orbiting the planet
@@ -158,7 +177,6 @@ void PositionAirplane(float angle)
 	CreateAirplane(m_ProperllerAngle);
 	glPopMatrix();
 }
-
 
 void InitializeWindow(int windowWidth , int windowHeight)
 {
@@ -178,7 +196,6 @@ void InitializeLights(void) {
 	GLfloat lightpos[4] = { 0,0,10,0 };
 	glLightfv(GL_LIGHT1, GL_POSITION, lightpos);
 }
-
 
 // Our GL Specific Initializations. Returns true On Success, false On Fail.
 bool init(void)
@@ -206,7 +223,7 @@ void PositionCamera()
 
 	glMatrixMode(GL_PROJECTION);
 	glLoadIdentity();
-	gluPerspective(45.0f, m_aspect, 0.1, 100.0);
+	gluPerspective(45.0f, m_aspect, 0.1, 1000.0);
 	glMatrixMode(GL_MODELVIEW);
 
 }
@@ -234,7 +251,7 @@ void KeyboardHandler(unsigned char key, int x, int y)
 			m_camera.m_up = vector3d(0.0f, 1.0f, 0.0f);   // Y is up
 			break;
 		case 's':
-			m_camera.m_pos = vector3d(0.0f, 0.0f, 100.0f);
+			m_camera.m_pos = vector3d(0.0f, 0.0f, 150.0f);
 			m_camera.m_view = vector3d(0.0f, 0.0f, 0.0f);
 			m_camera.m_up = vector3d(0.0f, 1.0f, 0.0f);   // Y is up
 			break;
@@ -347,6 +364,7 @@ void RenderScene()
 	CreateTheCenterPlanet();
 	PositionMoon(m_moonAngle);
 	PositionAirplane(m_moonAngle);
+	PositionSun(m_moonAngle);
 }
 
 // Our Rendering Is Done Here
