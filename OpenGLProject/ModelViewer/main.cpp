@@ -86,8 +86,8 @@ void CreateLightOfSun()
 	float maxDistance = m_DistanceOfPlanets * m_sunPositionMultyplier;
 	float brightnessMultiplier = (sunY + maxDistance) / (2.0f * maxDistance); // Normalize to [0, 1]
 	
-	// Clamp brightness to reasonable range (0.2 to 1.0)
-	brightnessMultiplier = 0.2f + (brightnessMultiplier * 0.8f);
+	
+	brightnessMultiplier = 0.05f + (brightnessMultiplier * 4.95f);
 	
 	// Base light intensities
 	float baseAmbient = 0.1f;
@@ -124,9 +124,6 @@ void CreateLightOfSun()
 	glLightf(GL_LIGHT1, GL_CONSTANT_ATTENUATION, 1.0f);
 	glLightf(GL_LIGHT1, GL_LINEAR_ATTENUATION, 0.0f);
 	glLightf(GL_LIGHT1, GL_QUADRATIC_ATTENUATION, 0.0f);
-
-	// Optional: Debug output to see brightness changes
-	// printf("Sun Y: %.2f, Brightness: %.2f\n", sunY, brightnessMultiplier);
 	
 	//glPushMatrix();
 	//glTranslatef(sunX, sunY, sunZ);
