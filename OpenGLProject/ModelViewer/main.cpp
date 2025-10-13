@@ -80,10 +80,41 @@ void CreateLightOfSun()
 	GLfloat lightPosition[4] = { sunX, sunY, sunZ, 1.0f };
 	glLightfv(GL_LIGHT1, GL_POSITION, lightPosition);
 
-	// REDUCED intensity light properties
-	GLfloat lightAmbient[4] = { 0.1f, 0.1f, 0.1f, 1.0f };   // Much lower ambient
-	GLfloat lightDiffuse[4] = { 0.8f, 0.7f, 0.5f, 1.0f };   // Reduced warm light
-	GLfloat lightSpecular[4] = { 0.6f, 0.6f, 0.6f, 1.0f };  // Reduced specular
+	// Calculate brightness based on sun's vertical position (Y coordinate)
+	// When sun is at top (positive Y): bright
+	// When sun is at bottom (negative Y): dim
+	float maxDistance = m_DistanceOfPlanets * m_sunPositionMultyplier;
+	float brightnessMultiplier = (sunY + maxDistance) / (2.0f * maxDistance); // Normalize to [0, 1]
+	
+	// Clamp brightness to reasonable range (0.2 to 1.0)
+	brightnessMultiplier = 0.2f + (brightnessMultiplier * 0.8f);
+	
+	// Base light intensities
+	float baseAmbient = 0.1f;
+	float baseDiffuseR = 0.8f;
+	float baseDiffuseG = 0.7f; 
+	float baseDiffuseB = 0.5f;
+	float baseSpecular = 0.6f;
+	
+	// Apply brightness multiplier to light properties
+	GLfloat lightAmbient[4] = { 
+		baseAmbient * brightnessMultiplier, 
+		baseAmbient * brightnessMultiplier, 
+		baseAmbient * brightnessMultiplier, 
+		1.0f 
+	};
+	GLfloat lightDiffuse[4] = { 
+		baseDiffuseR * brightnessMultiplier, 
+		baseDiffuseG * brightnessMultiplier, 
+		baseDiffuseB * brightnessMultiplier, 
+		1.0f 
+	};
+	GLfloat lightSpecular[4] = { 
+		baseSpecular * brightnessMultiplier, 
+		baseSpecular * brightnessMultiplier, 
+		baseSpecular * brightnessMultiplier, 
+		1.0f 
+	};
 
 	glLightfv(GL_LIGHT1, GL_AMBIENT, lightAmbient);
 	glLightfv(GL_LIGHT1, GL_DIFFUSE, lightDiffuse);
@@ -94,6 +125,8 @@ void CreateLightOfSun()
 	glLightf(GL_LIGHT1, GL_LINEAR_ATTENUATION, 0.0f);
 	glLightf(GL_LIGHT1, GL_QUADRATIC_ATTENUATION, 0.0f);
 
+	// Optional: Debug output to see brightness changes
+	// printf("Sun Y: %.2f, Brightness: %.2f\n", sunY, brightnessMultiplier);
 	
 	//glPushMatrix();
 	//glTranslatef(sunX, sunY, sunZ);
