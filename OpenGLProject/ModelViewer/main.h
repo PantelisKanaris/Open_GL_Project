@@ -10,7 +10,7 @@ void Render(void);
 void InitializeLights(void);
 bool init(void);
 void Reshape(int w, int h);
-void KeyboardHandler(unsigned char key, int x, int y);
+void KeyboardDownHandler(unsigned char key, int x, int y);
 void SpecialKeyHandler(int a_keys, int x, int y);
 void drawAxes();
 

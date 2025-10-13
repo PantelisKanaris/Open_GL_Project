@@ -1,4 +1,4 @@
-#include <stdio.h>           
+﻿#include <stdio.h>           
 #include <math.h>           
 #include <windows.h>         
 #include <gl/glut.h>       
@@ -7,6 +7,10 @@
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
 #include "main.h"
+#include "stb_image.h"
+#include "MyMath.h"
+
+#define STB_IMAGE_IMPLEMENTATION
 // Global Variables
 bool m_fullscreen;				
 bool m_culling = false;			// Culling Enabled is Mandatory for this assignment do not change
@@ -17,9 +21,74 @@ CameraPosition m_camera;
 const float m_PI = 3.1415926535897932384626433832795028;
 const float m_epsilon = 0.001;
 
-float m_moonAngle = 0.0f; // Angle for moon orbit
+float m_PlanetAngle = 0.0f; // Angle for the planets orbit
+float m_AirplaneAngle = 0.0f; // Angle for airplane movement
 float m_ProperllerAngle = 0.0f; // Angle for propeller rotation
 float m_DistanceOfPlanets = 20.0f; //Distance for planet orbit
+float m_PlanetSpeed = 1.0f; // Speed of moon orbit
+float m_airplaneSpeed = 0.2f; // Speed of airplane movement
+float m_propellerSpeed = 5.0f; // Speed of propeller rotation
+bool m_downKeyState = false; // Control key state
+
+// globals
+GLuint gMoonTex = 0;
+
+//GLuint LoadTexture(const char* filename)
+//{
+//	int width, height, channels;
+//	unsigned char* data = stbi_load(filename, &width, &height, &channels, 0);
+//	if (!data) {
+//		printf("Failed to load image: %s\n", filename);
+//		return 0;
+//	}
+//
+//	GLenum format = GL_RGB;
+//	if (channels == 1)      format = GL_RED;
+//	else if (channels == 3) format = GL_RGB;
+//	else if (channels == 4) format = GL_RGBA;
+//
+//	GLuint texID;
+//	glGenTextures(1, &texID);
+//	glBindTexture(GL_TEXTURE_2D, texID);
+//
+//	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+//	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+//	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+//	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+//
+//	glTexImage2D(GL_TEXTURE_2D, 0, format, width, height,
+//		0, format, GL_UNSIGNED_BYTE, data);
+//
+//	stbi_image_free(data);
+//	return texID;
+//}
+
+void ChangeColourOfBackground()
+{
+	// night: black
+	const vector3d night = { 0.0f, 0.0f, 0.0f };
+	// day: light-sky-blue (#87CEFA ≈ 0.529, 0.808, 0.980)
+	const vector3d day = { 0.529f, 0.808f, 0.980f };
+
+	float normalizedAngle = fmod(m_PlanetAngle, 360.0f) / 360.0f; // Normalize angle to [0, 1]
+
+	// Create a sine wave pattern so it goes: night → day → night
+	// When angle = 0° (sun at right): night
+	// When angle = 180° (sun at left): day  
+	// When angle = 360° (back to start): night again
+	float t = (-sin(normalizedAngle * 2.0f * m_PI) + 1.0f) / 2.0f; // Maps to [0, 1]
+
+	// Apply smoothstep for smoother transitions
+	t = t * t * (3.0f - 2.0f * t);
+
+	// Interpolate between night and day colors for each RGB component
+	float r = LinearInterpolation(night.x(), day.x(), t);
+	float g = LinearInterpolation(night.y(), day.y(), t);
+	float b = LinearInterpolation(night.z(), day.z(), t);
+
+	// Set the background color
+	glClearColor(r, g, b, 1.0f);
+}
 
 void CreateTheCenterPlanet(void)
 {
@@ -52,7 +121,7 @@ void CreatePropeller(float angleDeg, float hubRadius = 0.35f, float bladeSpan = 
 	glutSolidCube(1.0);
 	glPopMatrix();
 
-	// Blade 2 (90�)
+	// Blade 2 (90°)
 	glPushMatrix();
 	glRotatef(90.f, 1.f, 0.f, 0.f);
 	glTranslatef(0.0f, 0.0f, 0.02f);
@@ -129,7 +198,7 @@ void CreateAirplane(float propAngleDeg)
 	glTranslatef(+kHalfLength, 0.0f, 0.0f);
 	glColor3f(0.85f, 0.85f, 0.88f);
 	glutSolidSphere(0.5f, 18, 18);
-	glTranslatef(0.6f, 0.0f, 0.0f);  // in front of nose so it�s clearly visible
+	glTranslatef(0.6f, 0.0f, 0.0f);  // in front of nose so it’s clearly visible
 	CreatePropeller(propAngleDeg);
 	glPopMatrix();
 
@@ -151,18 +220,15 @@ void CreateSun()
 		}
 }
 
-
 void PositionSun(float angle)
 {
-	// Create the moon orbiting the planet
+	// Create the sun orbiting the planet
 	glPushMatrix();
 	glRotatef(angle, 0.0f, 0.0f, 1.0f); // Rotate around the planet
-	glTranslatef(-m_DistanceOfPlanets *1.5, 0.0f, 0.0f); // Position the moon 5 units away from the planet
+	glTranslatef(-m_DistanceOfPlanets * 2, 0.0f, 0.0f); // Position the sun double the distance away from the planet form the moon.
 	CreateSun();
 	glPopMatrix();
 }
-
-
 
 void PositionMoon(float angle)
 {
@@ -233,6 +299,11 @@ void PositionCamera()
 	glMatrixMode(GL_PROJECTION);
 	glLoadIdentity();
 	gluPerspective(45.0f, m_aspect, 0.1, 1000.0);
+
+	//postion the camera to look at the origin from far away
+	m_camera.m_pos = vector3d(0.0f, 0.0f, 150.0f);
+	m_camera.m_view = vector3d(0.0f, 0.0f, 0.0f);
+	m_camera.m_up = vector3d(0.0f, 1.0f, 0.0f);   // Y is up 
 	glMatrixMode(GL_MODELVIEW);
 
 }
@@ -253,33 +324,70 @@ void Reshape(int w, int h)
 // Our Keyboard Handler (Normal Keys)
 void KeyboardHandler(unsigned char key, int x, int y)
 {
+	float change = 1.0f;
+	// Check for Ctrl modifier directly
+	
+	if (m_downKeyState)
+	{
+		change = -change;
+	}
+
 	switch (key) {
-		case 'w':
-			m_camera.m_pos = vector3d(-20.0f, 0.0f, 0.0f);
-			m_camera.m_view = vector3d(20.0f, 0.0f, 0.0f); // look at origin
-			m_camera.m_up = vector3d(0.0f, 1.0f, 0.0f);   // Y is up
-			break;
-		case 's':
-			m_camera.m_pos = vector3d(0.0f, 0.0f, 150.0f);
-			m_camera.m_view = vector3d(0.0f, 0.0f, 0.0f);
-			m_camera.m_up = vector3d(0.0f, 1.0f, 0.0f);   // Y is up
-			break;
-		case 'd':
-			break;
-		case 'a':
-			break;
-		case 'l':
+	case '1':
+		m_camera.m_pos = vector3d(-20.0f, 0.0f, 0.0f);
+		m_camera.m_view = vector3d(20.0f, 0.0f, 0.0f);
+		m_camera.m_up = vector3d(0.0f, 1.0f, 0.0f);
+		break;
+	case '2':
+		break;
+	case 'p':
+
+		if (m_PlanetSpeed + change < 0.0f) // Prevent negative speed
 		{
+			m_PlanetSpeed = 0.1;
 			break;
 		}
-		case 'm':
+		m_PlanetSpeed += change;
+		break;
+	case 's':
+		if (m_propellerSpeed + change < 0.0f) // Prevent negative speed
+		{
+			m_propellerSpeed = 0.1;
 			break;
-		case 27:        // When Escape Is Pressed...
-			exit(0);    // Exit The Program
-			break;      // Ready For Next Case
-		default:
+
+		}
+		m_propellerSpeed += change;
+		break;
+	case 'a':
+	{
+		if (m_airplaneSpeed + change < 0.0f) // Prevent negative speed
+		{
+			m_airplaneSpeed = 0.1;
+			break;
+		}
+		m_airplaneSpeed += change;
 		break;
 	}
+	case 'z':
+		break;
+	case 'r':
+		m_PlanetSpeed = 1.0f;
+		m_airplaneSpeed = 0.2f;
+		m_propellerSpeed = 5.0f;
+		break;
+	case '+':
+		m_camera.m_pos.setZ(m_camera.m_pos.z() + 5.0f);
+		break;
+	case '_':
+		m_camera.m_pos.setZ(m_camera.m_pos.z() - 5.0f);
+		break;
+	case 27:        // When Escape Is Pressed...
+		exit(0);    // Exit The Program
+		break;      // Ready For Next Case
+	default:
+		break;
+	}
+
 	glutPostRedisplay();
 }
 
@@ -308,9 +416,10 @@ void SpecialKeyHandler(int a_keys, int x, int y)
 			}  
 		break;
 		case GLUT_KEY_UP:
-
+			m_downKeyState = false;
 			break;
 		case GLUT_KEY_DOWN:
+			m_downKeyState = true;
 			break;
 		case GLUT_KEY_LEFT:
 			break;
@@ -357,28 +466,45 @@ int main(int argc, char** argv)
 	}
 	glutDisplayFunc(Render);                     // Register The Display Function
 	glutReshapeFunc(Reshape);                    // Register The Reshape Handler
-	glutKeyboardFunc(KeyboardHandler);                  // Register The Keyboard Handler
-	glutSpecialFunc(SpecialKeyHandler);               // Register Special Keys Handler
-	glutMouseFunc(MouseButtonHandler);					 // Register Mouse buttons
-	glutIdleFunc(NULL);                        	 // We Do Rendering In Idle Time
+	glutKeyboardFunc(KeyboardHandler);       // Register The Keyboard Down Handler
+	glutSpecialFunc(SpecialKeyHandler);          // Register Special Keys Handler
+	glutMouseFunc(MouseButtonHandler);           // Register Mouse buttons
+	glutIdleFunc(NULL);                          // We Do Rendering In Idle Time
 	glutMainLoop();                              // Go To GLUT Main Loop
 	return 0;
 }
 
+/// <summary>
+/// This function updates the angles for the moon orbit and propeller rotation based on elapsed time.
+/// </summary>
+void Update()
+{
+	double currentTime = glutGet(GLUT_ELAPSED_TIME) / 1000.0;
+	static double lastTime = currentTime;
+	double deltaTime = currentTime - lastTime;
+	lastTime = currentTime;
+
+	m_PlanetAngle = fmod(m_PlanetAngle + m_PlanetSpeed * (float)deltaTime * 60.0f, 360.0f);
+	m_AirplaneAngle = fmod( m_AirplaneAngle + m_airplaneSpeed * (float)deltaTime * 60.0f,360.0f);
+	m_ProperllerAngle = fmod(m_ProperllerAngle + m_propellerSpeed * (float)deltaTime * 60.0f,360.0f);
+
+}
+
 void RenderScene()
 {
-	m_moonAngle = m_moonAngle + 0.1;
-	m_ProperllerAngle = m_ProperllerAngle + 0.5;
+	
+	Update();
 	// Draw the scene
 	CreateTheCenterPlanet();
-	PositionMoon(m_moonAngle);
-	PositionAirplane(m_moonAngle);
-	PositionSun(m_moonAngle);
+	PositionMoon(m_PlanetAngle);
+	PositionAirplane(m_AirplaneAngle);
+	PositionSun(m_PlanetAngle);
 }
 
 // Our Rendering Is Done Here
 void Render(void)   
 {
+	ChangeColourOfBackground();
 	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);	// Clear The Screen And The Depth Buffer
 
 	// Do we have culling enabled?

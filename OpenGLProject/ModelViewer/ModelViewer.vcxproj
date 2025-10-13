@@ -99,9 +99,11 @@
     <ClCompile Include="main.cpp">
       <AdditionalIncludeDirectories Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">./include;%(AdditionalIncludeDirectories);..\glm-0.9.9.8\glm</AdditionalIncludeDirectories>
     </ClCompile>
+    <ClCompile Include="MyMath.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="main.h" />
+    <ClInclude Include="MyMath.h" />
     <ClInclude Include="Vector3.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
