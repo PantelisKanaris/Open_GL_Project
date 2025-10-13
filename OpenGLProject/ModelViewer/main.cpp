@@ -29,6 +29,7 @@ float m_PlanetSpeed = 1.0f; // Speed of moon orbit
 float m_airplaneSpeed = 0.2f; // Speed of airplane movement
 float m_propellerSpeed = 5.0f; // Speed of propeller rotation
 bool m_downKeyState = false; // Control key state
+int m_sunPositionMultyplier = 2; // Multiplier for sun position
 
 // globals
 GLuint gMoonTex = 0;
@@ -63,20 +64,95 @@ GLuint gMoonTex = 0;
 //	return texID;
 //}
 
+
+
+void CreateLightOfSun()
+{
+	// Calculate the global position of the sun 
+	float radians = m_PlanetAngle * (m_PI / 180.0f);
+	float sunX = -cos(radians) * m_DistanceOfPlanets * m_sunPositionMultyplier;
+	float sunY = -sin(radians) * m_DistanceOfPlanets * m_sunPositionMultyplier;
+	float sunZ = 0.0f;
+
+	glEnable(GL_LIGHT1);
+
+	// Set light position
+	GLfloat lightPosition[4] = { sunX, sunY, sunZ, 1.0f };
+	glLightfv(GL_LIGHT1, GL_POSITION, lightPosition);
+
+	// REDUCED intensity light properties
+	GLfloat lightAmbient[4] = { 0.1f, 0.1f, 0.1f, 1.0f };   // Much lower ambient
+	GLfloat lightDiffuse[4] = { 0.8f, 0.7f, 0.5f, 1.0f };   // Reduced warm light
+	GLfloat lightSpecular[4] = { 0.6f, 0.6f, 0.6f, 1.0f };  // Reduced specular
+
+	glLightfv(GL_LIGHT1, GL_AMBIENT, lightAmbient);
+	glLightfv(GL_LIGHT1, GL_DIFFUSE, lightDiffuse);
+	glLightfv(GL_LIGHT1, GL_SPECULAR, lightSpecular);
+
+	// Minimal attenuation for maximum visibility
+	glLightf(GL_LIGHT1, GL_CONSTANT_ATTENUATION, 1.0f);
+	glLightf(GL_LIGHT1, GL_LINEAR_ATTENUATION, 0.0f);
+	glLightf(GL_LIGHT1, GL_QUADRATIC_ATTENUATION, 0.0f);
+
+	
+	//glPushMatrix();
+	//glTranslatef(sunX, sunY, sunZ);
+	//glColor3f(1.0f, 1.0f, 1.0f); // Bright white marker
+	//glutSolidSphere(1.0f, 10, 10); // Small marker sphere
+	//glPopMatrix();
+}
+
+
+void CreateLightOfAirplane()
+{
+	// Calculate the global position of the airplane (same logic as PositionAirplane)
+	float radians = m_AirplaneAngle * (m_PI / 180.0f);
+	float airplaneX = cos(radians) * 10.0f; // 10.0f is the distance from center
+	float airplaneY = sin(radians) * 10.0f;
+	float airplaneZ = 0.0f;
+
+	// Enable the airplane light
+	glEnable(GL_LIGHT2);
+
+	// Set light position at the center of the airplane
+	GLfloat lightPosition[4] = { airplaneX, airplaneY, airplaneZ, 1.0f };
+	glLightfv(GL_LIGHT2, GL_POSITION, lightPosition);
+
+	// Configure airplane light properties (white/blue-ish for navigation lights)
+	GLfloat lightAmbient[4] = { 0.05f, 0.05f, 0.1f, 1.0f };   // Slight blue ambient
+	GLfloat lightDiffuse[4] = { 0.8f, 0.9f, 1.0f, 1.0f };     // Cool white light
+	GLfloat lightSpecular[4] = { 1.0f, 1.0f, 1.0f, 1.0f };    // Bright specular
+
+	glLightfv(GL_LIGHT2, GL_AMBIENT, lightAmbient);
+	glLightfv(GL_LIGHT2, GL_DIFFUSE, lightDiffuse);
+	glLightfv(GL_LIGHT2, GL_SPECULAR, lightSpecular);
+
+	// Set moderate attenuation for airplane light
+	glLightf(GL_LIGHT2, GL_CONSTANT_ATTENUATION, 1.0f);
+	glLightf(GL_LIGHT2, GL_LINEAR_ATTENUATION, 0.00f);
+	glLightf(GL_LIGHT2, GL_QUADRATIC_ATTENUATION, 0.00f);
+
+	// Optional: Debug marker to see where the light is positioned
+	//glPushMatrix();
+	//glTranslatef(airplaneX, airplaneY, airplaneZ);
+	//glColor3f(0.0f, 1.0f, 1.0f); // Cyan marker
+	//glutSolidSphere(0.5f, 8, 8); // Small marker sphere
+	//glPopMatrix();
+}
+
+
 void ChangeColourOfBackground()
 {
-	// night: black
 	const vector3d night = { 0.0f, 0.0f, 0.0f };
-	// day: light-sky-blue (#87CEFA ≈ 0.529, 0.808, 0.980)
-	const vector3d day = { 0.529f, 0.808f, 0.980f };
+
+	// Much darker day color
+	const vector3d day = { 0.05f, 0.1f, 0.15f }; // Reduced from (0.1, 0.2, 0.3)
 
 	float normalizedAngle = fmod(m_PlanetAngle, 360.0f) / 360.0f; // Normalize angle to [0, 1]
 
-	// Create a sine wave pattern so it goes: night → day → night
-	// When angle = 0° (sun at right): night
-	// When angle = 180° (sun at left): day  
-	// When angle = 360° (back to start): night again
-	float t = (-sin(normalizedAngle * 2.0f * m_PI) + 1.0f) / 2.0f; // Maps to [0, 1]
+	// Created a sine wave pattern so it goes: night → day → night
+	float radians = normalizedAngle * 2.0f * m_PI; // Convert to radians
+	float t = (-sin(radians) + 1.0f) / 2.0f; 
 
 	// Apply smoothstep for smoother transitions
 	t = t * t * (3.0f - 2.0f * t);
@@ -92,18 +168,18 @@ void ChangeColourOfBackground()
 
 void CreateTheCenterPlanet(void)
 {
-	// Create the central planet at the origin
+	// Create the central planet at the origin - more realistic earth-like blue
 	glPushMatrix();
-	glColor3f(0.0f, 0.0f, 1.0f); // Blue color for the planet
-	glutSolidSphere(5.0, 50, 50); // Radius 2.0, 50 slices and stacks
+	glColor3f(0.2f, 0.4f, 0.7f); // Desaturated blue (was 0.0, 0.0, 1.0)
+	glutSolidSphere(5.0, 50, 50);
 	glPopMatrix();
 }
 
 void CreateTheMoon()
 {
-	// Create the moon orbiting the planet
-	glColor3f(0.5f, 0.5f, 0.5f); // Gray color for the moon
-	glutSolidSphere(3.0, 30, 30); // Radius 0.5, 30 slices and stacks
+	// Create the moon orbiting the planet - darker, more realistic gray
+	glColor3f(0.25f, 0.25f, 0.25f); // Much darker gray (was 0.5, 0.5, 0.5)
+	glutSolidSphere(3.0, 30, 30);
 }
 
 void CreatePropeller(float angleDeg, float hubRadius = 0.35f, float bladeSpan = 2.2f, float bladeThickness = 0.3f)
@@ -225,7 +301,7 @@ void PositionSun(float angle)
 	// Create the sun orbiting the planet
 	glPushMatrix();
 	glRotatef(angle, 0.0f, 0.0f, 1.0f); // Rotate around the planet
-	glTranslatef(-m_DistanceOfPlanets * 2, 0.0f, 0.0f); // Position the sun double the distance away from the planet form the moon.
+	glTranslatef(-m_DistanceOfPlanets * m_sunPositionMultyplier, 0.0f, 0.0f); // Position the sun double the distance away from the planet form the moon.
 	CreateSun();
 	glPopMatrix();
 }
@@ -266,10 +342,19 @@ void InitializeWindow(int windowWidth , int windowHeight)
 
 void InitializeLights(void) {
 
-	glEnable(GL_LIGHT0);	
-	glEnable(GL_LIGHTING);							   // Enable Lighting
-	GLfloat lightpos[4] = { 0,0,10,0 };
-	glLightfv(GL_LIGHT1, GL_POSITION, lightpos);
+	glEnable(GL_LIGHT0);
+	glEnable(GL_LIGHTING);
+	
+	// Configure GL_LIGHT0 with moderate default lighting
+	GLfloat light0Position[4] = { 0.0f, 0.0f, 1.0f, 0.0f }; // Directional light from front
+	GLfloat light0Ambient[4] = { 0.1f, 0.1f, 0.1f, 1.0f };   // Low ambient
+	GLfloat light0Diffuse[4] = { 0.6f, 0.6f, 0.6f, 1.0f };   // Moderate diffuse
+	GLfloat light0Specular[4] = { 0.5f, 0.5f, 0.5f, 1.0f };  // Moderate specular
+
+	glLightfv(GL_LIGHT0, GL_POSITION, light0Position);
+	glLightfv(GL_LIGHT0, GL_AMBIENT, light0Ambient);
+	glLightfv(GL_LIGHT0, GL_DIFFUSE, light0Diffuse);
+	glLightfv(GL_LIGHT0, GL_SPECULAR, light0Specular);
 }
 
 // Our GL Specific Initializations. Returns true On Success, false On Fail.
@@ -494,6 +579,8 @@ void RenderScene()
 {
 	
 	Update();
+	CreateLightOfSun();
+	CreateLightOfAirplane();
 	// Draw the scene
 	CreateTheCenterPlanet();
 	PositionMoon(m_PlanetAngle);
