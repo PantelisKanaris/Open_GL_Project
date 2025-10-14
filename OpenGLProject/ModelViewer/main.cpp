@@ -30,9 +30,11 @@ float m_airplaneSpeed = 0.2f; // Speed of airplane movement
 float m_propellerSpeed = 5.0f; // Speed of propeller rotation
 bool m_downKeyState = false; // Control key state
 int m_sunPositionMultyplier = 2; // Multiplier for sun position
-
-// globals
-GLuint gMoonTex = 0;
+GLuint m_gEarthDayTex = 0;
+GLuint m_gEarthNightTex = 0;
+GLuint m_gMoonTex = 0;
+GLUquadric* m_gEarthQuad = nullptr;
+GLUquadric* m_gMoonQuad = nullptr;
 
 GLuint LoadTexture(const char* filename)
 {
@@ -63,6 +65,121 @@ GLuint LoadTexture(const char* filename)
 	return texID;
 }
 
+void InitializeEarthTexture()
+{
+	stbi_set_flip_vertically_on_load(1);
+	m_gEarthDayTex = LoadTexture("Textures/earth_2k.jpg");
+	m_gEarthNightTex = LoadTexture("Textures/earth_2k_night.jpg");
+	if (!m_gEarthDayTex || !m_gEarthNightTex) 
+	{
+		fprintf(stderr, "Earth textures missing\n");
+	}
+	m_gEarthQuad = gluNewQuadric();
+	gluQuadricTexture(m_gEarthQuad, GL_TRUE);   // enable texture coords
+	gluQuadricNormals(m_gEarthQuad, GLU_SMOOTH);
+
+}
+
+
+void InitializeMoonTexture()
+{
+	stbi_set_flip_vertically_on_load(1);
+	m_gMoonTex = LoadTexture("Textures/2k_moon.jpg");
+	if (!m_gMoonTex)
+	{
+		fprintf(stderr, "Moon texture missing\n");
+	}
+	m_gMoonQuad = gluNewQuadric();
+	gluQuadricTexture(m_gMoonQuad, GL_TRUE);   // enable texture coords
+	gluQuadricNormals(m_gMoonQuad, GLU_SMOOTH);
+	glBindTexture(GL_TEXTURE_2D, m_gMoonTex);
+}
+
+// Returns day factor in [0,1] based on sun Y 
+float GetDayFactor()
+{
+	float radians = m_PlanetAngle * (m_PI / 180.0f);
+	float sunY = -sinf(radians) * m_DistanceOfPlanets * m_sunPositionMultyplier;
+	float maxD = m_DistanceOfPlanets * m_sunPositionMultyplier;
+	float t = (sunY + maxD) / (2.0f * maxD); // 0..1
+	// smooth a bit
+	t = t * t * (3.f - 2.f * t);
+	return t;
+}
+
+void CreatePlanetUsingTexture()
+{
+	// 0..1 where 1 = day, 0 = night, already smoothed in GetDayFactor()
+	float day = GetDayFactor();
+
+	// Optional extra smoothing (feather the switch region a bit more)
+	auto smooth = [](float x, float a, float b) {
+		float t = (x - a) / (b - a);
+		if (t < 0.f) t = 0.f; else if (t > 1.f) t = 1.f;
+		return t * t * (3.f - 2.f * t);
+		};
+	float dayW = smooth(day, 0.35f, 0.65f);  // tweak a/b to taste
+	float nightW = 1.0f - dayW;
+	nightW *= 0.9f; // usually looks better a bit dimmer
+
+	glPushMatrix();
+
+	// ===== PASS 1: Day texture (lit), writes depth =====
+	glEnable(GL_TEXTURE_2D);
+	glBindTexture(GL_TEXTURE_2D, m_gEarthDayTex);
+	glTexEnvi(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_MODULATE);
+
+	glEnable(GL_LIGHTING);
+	glDisable(GL_BLEND);
+	glDepthMask(GL_TRUE);
+	glDepthFunc(GL_LESS);
+
+	glColor3f(dayW, dayW, dayW);               // scale contribution
+	if (m_gEarthQuad) gluSphere(m_gEarthQuad, 5.0, 96, 96);
+
+	// ===== PASS 2: Night texture (unlit), additive over the first pass =====
+	glBindTexture(GL_TEXTURE_2D, m_gEarthNightTex);
+	glDisable(GL_LIGHTING);
+	glEnable(GL_BLEND);
+	glBlendFunc(GL_ONE, GL_ONE);               // additive
+	glDepthMask(GL_FALSE);                     // don’t modify depth
+	glDepthFunc(GL_EQUAL);                     // draw exactly where pass 1 drew
+
+	glColor3f(nightW, nightW, nightW);         // scale night contribution
+	if (m_gEarthQuad) gluSphere(m_gEarthQuad, 5.0, 96, 96);
+
+	// ---- restore render state ----
+	glDisable(GL_BLEND);
+	glDepthMask(GL_TRUE);
+	glDepthFunc(GL_LESS);
+	glEnable(GL_LIGHTING);
+
+	glBindTexture(GL_TEXTURE_2D, 0);
+	glDisable(GL_TEXTURE_2D);
+	glPopMatrix();
+}
+
+void CreateTheMoonWithTexture()
+{
+	glPushMatrix();
+
+	glEnable(GL_TEXTURE_2D);
+	glBindTexture(GL_TEXTURE_2D, m_gMoonTex);
+	glTexEnvi(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_MODULATE);
+
+	// Use white so the texture’s real colors show
+	glColor3f(1.f, 1.f, 1.f);
+
+	if (m_gMoonQuad) 
+	{
+		gluSphere(m_gMoonQuad, 3.0, 48, 48);
+	}
+
+	glBindTexture(GL_TEXTURE_2D, 0);
+	glDisable(GL_TEXTURE_2D);
+
+	glPopMatrix();
+}
 
 void CreateLightOfSun()
 {
@@ -130,7 +247,6 @@ void CreateLightOfSun()
 	//glPopMatrix();
 }
 
-
 void CreateLightOfAirplane()
 {
 	// Calculate the global position of the airplane (same logic as PositionAirplane)
@@ -168,13 +284,12 @@ void CreateLightOfAirplane()
 	//glPopMatrix();
 }
 
-
 void ChangeColourOfBackground()
 {
 	const vector3d night = { 0.0f, 0.0f, 0.0f };
 
 	// Much darker day color
-	const vector3d day = { 0.05f, 0.1f, 0.15f }; // Reduced from (0.1, 0.2, 0.3)
+	const vector3d day = { 0.25f, 0.45f, 0.7f };
 
 	float normalizedAngle = fmod(m_PlanetAngle, 360.0f) / 360.0f; // Normalize angle to [0, 1]
 
@@ -322,6 +437,8 @@ void CreateSun()
 			glColor4f(1.0f, 1.0f, 0.0f, currentAlpha); // Yellow color with varying alpha
 			glutSolidSphere(currentRadius, 50, 50); // Draw sphere with current radius
 		}
+
+		glDisable(GL_BLEND); 
 }
 
 void PositionSun(float angle)
@@ -343,6 +460,16 @@ void PositionMoon(float angle)
 	CreateTheMoon();
 	glPopMatrix();
 
+}
+
+void PositionMoonWithTexture(float angle)
+{
+	// Create the moon orbiting the planet
+	glPushMatrix();
+	glRotatef(angle, 0.0f, 0.0f, 1.0f); // Rotate around the planet
+	glTranslatef(m_DistanceOfPlanets, 0.0f, 0.0f); // Position the moon 5 units away from the planet
+	CreateTheMoonWithTexture();
+	glPopMatrix();
 }
 
 void PositionAirplane(float angle)
@@ -370,19 +497,19 @@ void InitializeWindow(int windowWidth , int windowHeight)
 
 void InitializeLights(void) {
 
-	glEnable(GL_LIGHT0);
+	/*glEnable(GL_LIGHT0);*/
 	glEnable(GL_LIGHTING);
 	
-	// Configure GL_LIGHT0 with moderate default lighting
-	GLfloat light0Position[4] = { 0.0f, 0.0f, 1.0f, 0.0f }; // Directional light from front
-	GLfloat light0Ambient[4] = { 0.1f, 0.1f, 0.1f, 1.0f };   // Low ambient
-	GLfloat light0Diffuse[4] = { 0.6f, 0.6f, 0.6f, 1.0f };   // Moderate diffuse
-	GLfloat light0Specular[4] = { 0.5f, 0.5f, 0.5f, 1.0f };  // Moderate specular
+	//// Configure GL_LIGHT0 with moderate default lighting
+	//GLfloat light0Position[4] = { 0.0f, 0.0f, 1.0f, 0.0f }; // Directional light from front
+	//GLfloat light0Ambient[4] = { 0.1f, 0.1f, 0.1f, 1.0f };   // Low ambient
+	//GLfloat light0Diffuse[4] = { 0.6f, 0.6f, 0.6f, 1.0f };   // Moderate diffuse
+	//GLfloat light0Specular[4] = { 0.5f, 0.5f, 0.5f, 1.0f };  // Moderate specular
 
-	glLightfv(GL_LIGHT0, GL_POSITION, light0Position);
-	glLightfv(GL_LIGHT0, GL_AMBIENT, light0Ambient);
-	glLightfv(GL_LIGHT0, GL_DIFFUSE, light0Diffuse);
-	glLightfv(GL_LIGHT0, GL_SPECULAR, light0Specular);
+	//glLightfv(GL_LIGHT0, GL_POSITION, light0Position);
+	//glLightfv(GL_LIGHT0, GL_AMBIENT, light0Ambient);
+	//glLightfv(GL_LIGHT0, GL_DIFFUSE, light0Diffuse);
+	//glLightfv(GL_LIGHT0, GL_SPECULAR, light0Specular);
 }
 
 // Our GL Specific Initializations. Returns true On Success, false On Fail.
@@ -402,7 +529,8 @@ bool init(void)
 	glEnable(GL_NORMALIZE);
 	glFrontFace(GL_CCW);                               //Counter Clock Wise definition of the front and back side of faces
 	glCullFace(GL_BACK);                               //Hide the back side
-	
+	InitializeEarthTexture();
+	InitializeMoonTexture();
 	return true;
 }
 
@@ -610,8 +738,10 @@ void RenderScene()
 	CreateLightOfSun();
 	CreateLightOfAirplane();
 	// Draw the scene
-	CreateTheCenterPlanet();
-	PositionMoon(m_PlanetAngle);
+	//CreateTheCenterPlanet();
+	CreatePlanetUsingTexture();
+	//PositionMoon(m_PlanetAngle);
+	PositionMoonWithTexture(m_PlanetAngle);
 	PositionAirplane(m_AirplaneAngle);
 	PositionSun(m_PlanetAngle);
 }
