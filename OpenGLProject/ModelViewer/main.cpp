@@ -34,9 +34,14 @@ GLuint m_gEarthDayTex = 0;
 GLuint m_gEarthNightTex = 0;
 GLuint m_gMoonTex = 0;
 GLuint m_gSunTex = 0;
+GLuint m_texFuselage = 0;   // long-body paint/decal
+GLuint m_texWing = 0;   // wing top/bottom
+GLuint m_texMetal = 0;   // nacelles / nose cap 
 GLUquadric* m_gEarthQuad = nullptr;
 GLUquadric* m_gMoonQuad = nullptr;
 GLUquadric* m_gSunQuad = nullptr;
+
+GLUquadric* m_fuselageQuad = nullptr; // for textured sphere scaled to ellipsoid
 
 
 GLuint LoadTexture(const char* filename)
@@ -109,6 +114,24 @@ void InitializeSunTexture()
 	gluQuadricNormals(m_gSunQuad, GLU_SMOOTH);
 }
 
+void InitializeAirplaneTextures()
+{
+	stbi_set_flip_vertically_on_load(1);
+
+	m_texFuselage = LoadTexture("Textures/airplane_fuselage.jpg");
+	m_texWing = LoadTexture("Textures/airplane_wing.jpg");
+	m_texMetal = LoadTexture("Textures/painted_metal.png"); 
+
+	if (!m_texFuselage || !m_texWing || !m_texMetal)
+	{
+		fprintf(stderr, "Airplane textures missing\n");
+	}
+
+	m_fuselageQuad = gluNewQuadric();
+	gluQuadricTexture(m_fuselageQuad, GL_TRUE);
+	gluQuadricNormals(m_fuselageQuad, GLU_SMOOTH);
+}
+
 // Returns day factor in [0,1] based on sun Y 
 float GetDayFactor()
 {
@@ -127,14 +150,22 @@ void CreatePlanetUsingTexture()
 	float day = GetDayFactor();
 
 	// Optional extra smoothing (feather the switch region a bit more)
-	auto smooth = [](float x, float a, float b) {
-		float t = (x - a) / (b - a);
-		if (t < 0.f) t = 0.f; else if (t > 1.f) t = 1.f;
-		return t * t * (3.f - 2.f * t);
+	auto smooth = [](float x, float a, float b) 
+		{
+			float t = (x - a) / (b - a);
+			if (t < 0.0f)
+			{
+				t = 0.0f;
+			}
+			else if (t > 1.0f)
+			{
+				t = 1.0f;
+			}
+			return t * t * (3.f - 2.f * t);
 		};
-	float dayW = smooth(day, 0.35f, 0.65f);  // tweak a/b to taste
+	float dayW = smooth(day, 0.35f, 0.65f);  
 	float nightW = 1.0f - dayW;
-	nightW *= 0.9f; // usually looks better a bit dimmer
+	nightW *= 0.9f; 
 
 	glPushMatrix();
 
@@ -153,20 +184,18 @@ void CreatePlanetUsingTexture()
 
 	// ===== PASS 2: Night texture (unlit), additive over the first pass =====
 	glBindTexture(GL_TEXTURE_2D, m_gEarthNightTex);
-	glDisable(GL_LIGHTING);
 	glEnable(GL_BLEND);
 	glBlendFunc(GL_ONE, GL_ONE);               // additive
 	glDepthMask(GL_FALSE);                     // don’t modify depth
 	glDepthFunc(GL_EQUAL);                     // draw exactly where pass 1 drew
 
-	glColor3f(nightW, nightW, nightW);         // scale night contribution
+	glColor3f(1.0f, 1.0f, 1.0f);         // scale night contribution
 	if (m_gEarthQuad) gluSphere(m_gEarthQuad, 5.0, 96, 96);
 
 	// ---- restore render state ----
 	glDisable(GL_BLEND);
 	glDepthMask(GL_TRUE);
 	glDepthFunc(GL_LESS);
-	glEnable(GL_LIGHTING);
 
 	glBindTexture(GL_TEXTURE_2D, 0);
 	glDisable(GL_TEXTURE_2D);
@@ -339,6 +368,66 @@ void CreateTheMoon()
 	glutSolidSphere(3.0, 30, 30);
 }
 
+
+// Draw a double-sided textured rectangle centered at origin in YZ plane,
+// with size: chord along +Y/-Y, span along +Z/-Z, and a small thickness (X).
+static void DrawWingPlate(float chord, float span, float thickness)
+{
+	float y = chord * 0.5f;
+	float z = span * 0.5f;
+	float x = thickness * 0.5f;
+
+	glBegin(GL_QUADS);
+
+	// +X face (top plate)
+	glNormal3f(1, 0, 0);
+	glTexCoord2f(0, 0); glVertex3f(+x, +y, -z);
+	glTexCoord2f(1, 0); glVertex3f(+x, +y, +z);
+	glTexCoord2f(1, 1); glVertex3f(+x, -y, +z);
+	glTexCoord2f(0, 1); glVertex3f(+x, -y, -z);
+
+	// -X face (bottom plate)
+	glNormal3f(-1, 0, 0);
+	glTexCoord2f(0, 0); glVertex3f(-x, +y, -z);
+	glTexCoord2f(1, 0); glVertex3f(-x, +y, +z);
+	glTexCoord2f(1, 1); glVertex3f(-x, -y, +z);
+	glTexCoord2f(0, 1); glVertex3f(-x, -y, -z);
+
+	// Thin edges (repeat texture minimally)
+	glNormal3f(0, 1, 0);
+	glTexCoord2f(0, 0); glVertex3f(-x, +y, -z);
+	glTexCoord2f(1, 0); glVertex3f(+x, +y, -z);
+	glTexCoord2f(1, 0.05f); glVertex3f(+x, +y, +z);
+	glTexCoord2f(0, 0.05f); glVertex3f(-x, +y, +z);
+
+	glNormal3f(0, -1, 0);
+	glTexCoord2f(0, 0); glVertex3f(-x, -y, -z);
+	glTexCoord2f(1, 0); glVertex3f(+x, -y, -z);
+	glTexCoord2f(1, 0.05f); glVertex3f(+x, -y, +z);
+	glTexCoord2f(0, 0.05f); glVertex3f(-x, -y, +z);
+
+	glNormal3f(0, 0, 1);
+	glTexCoord2f(0, 0); glVertex3f(-x, +y, +z);
+	glTexCoord2f(1, 0); glVertex3f(+x, +y, +z);
+	glTexCoord2f(1, 0.05f); glVertex3f(+x, -y, +z);
+	glTexCoord2f(0, 0.05f); glVertex3f(-x, -y, +z);
+
+	glNormal3f(0, 0, -1);
+	glTexCoord2f(0, 0); glVertex3f(-x, +y, -z);
+	glTexCoord2f(1, 0); glVertex3f(+x, +y, -z);
+	glTexCoord2f(1, 0.05f); glVertex3f(+x, -y, -z);
+	glTexCoord2f(0, 0.05f); glVertex3f(-x, -y, -z);
+
+	glEnd();
+}
+
+// Draw a textured GLU sphere (we'll scale it to an ellipsoid for the fuselage)
+static void DrawTexturedSphere(GLUquadric* q, float r, int sl = 48, int st = 48)
+{
+	gluSphere(q, r, sl, st); // GLU provides (s,t) coords when quadric texture is TRUE
+}
+
+
 void CreatePropeller(float angleDeg, float hubRadius = 0.35f, float bladeSpan = 2.2f, float bladeThickness = 0.3f)
 {
 	glPushMatrix();
@@ -362,6 +451,119 @@ void CreatePropeller(float angleDeg, float hubRadius = 0.35f, float bladeSpan = 
 	glutSolidCube(1.0);
 	glPopMatrix();
 
+	glPopMatrix();
+}
+
+
+void CreateAirplaneWithTexture(float propAngleDeg)
+{
+	static const float kBodyRadius = 2.0f;   // base sphere radius
+	static const float kBodyScaleX = 3.0f;   // stretch along +X (length)
+	static const float kBodyScaleY = 1.0f;   // vertical thickness
+	static const float kBodyScaleZ = 1.0f;   // width
+	static const float kHalfLength = kBodyRadius * kBodyScaleX;
+	static const float Width = 0.4f;
+
+	// --- FUSELAGE: textured GLU sphere scaled to ellipsoid ---
+	glPushMatrix();
+	glEnable(GL_TEXTURE_2D);
+	glBindTexture(GL_TEXTURE_2D, m_texFuselage);
+	glTexEnvi(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_MODULATE);
+	glColor3f(1.f, 1.f, 1.f);  // don't tint the texture
+	glScalef(kBodyScaleX, kBodyScaleY, kBodyScaleZ);
+	if (m_fuselageQuad) DrawTexturedSphere(m_fuselageQuad, kBodyRadius, 64, 64);
+	glBindTexture(GL_TEXTURE_2D, 0);
+	glDisable(GL_TEXTURE_2D);
+	glPopMatrix();
+
+	// --- MAIN WINGS: textured plates ---
+	glPushMatrix();
+	glEnable(GL_TEXTURE_2D);
+	glBindTexture(GL_TEXTURE_2D, m_texWing);
+	glTexEnvi(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_MODULATE);
+	glColor3f(1.f, 1.f, 1.f);
+	glTranslatef(0.6f, 0.0f, 0.0f);         // slight forward placement
+	DrawWingPlate(/*chord*/3.0f, /*span*/12.0f, /*thickness*/Width);
+	glBindTexture(GL_TEXTURE_2D, 0);
+	glDisable(GL_TEXTURE_2D);
+	glPopMatrix();
+
+	// --- ENGINES: keep your spheres but give them a metal texture ---
+	// Right nacelle
+	glPushMatrix();
+	glTranslatef(1.0f, 0.0f, 6.0f);
+	glEnable(GL_TEXTURE_2D);
+	if (m_texMetal) glBindTexture(GL_TEXTURE_2D, m_texMetal);
+	glTexEnvi(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_MODULATE);
+	glColor3f(1.f, 1.f, 1.f);
+	// Use a GLU quadric to get texture coords on the nacelle sphere:
+	static GLUquadric* qNacelle = nullptr;
+	if (!qNacelle) { qNacelle = gluNewQuadric(); gluQuadricTexture(qNacelle, GL_TRUE); gluQuadricNormals(qNacelle, GLU_SMOOTH); }
+	gluSphere(qNacelle, 1.2f, 36, 36);
+	glBindTexture(GL_TEXTURE_2D, 0);
+	glDisable(GL_TEXTURE_2D);
+
+	// Prop in front (keep geometry; texture optional)
+	glTranslatef(1.2f, 0.0f, 0.0f);
+	CreatePropeller(propAngleDeg);
+	glPopMatrix();
+
+	// Left nacelle
+	glPushMatrix();
+	glTranslatef(1.0f, 0.0f, -6.0f);
+	glEnable(GL_TEXTURE_2D);
+	if (m_texMetal) glBindTexture(GL_TEXTURE_2D, m_texMetal);
+	glTexEnvi(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_MODULATE);
+	glColor3f(1.f, 1.f, 1.f);
+	static GLUquadric* qNacelle2 = nullptr;
+	if (!qNacelle2) { qNacelle2 = gluNewQuadric(); gluQuadricTexture(qNacelle2, GL_TRUE); gluQuadricNormals(qNacelle2, GLU_SMOOTH); }
+	gluSphere(qNacelle2, 1.2f, 36, 36);
+	glBindTexture(GL_TEXTURE_2D, 0);
+	glDisable(GL_TEXTURE_2D);
+	glTranslatef(1.2f, 0.0f, 0.0f);
+	CreatePropeller(propAngleDeg);
+	glPopMatrix();
+
+	// --- HORIZONTAL STABS: textured plates ---
+	glPushMatrix();
+	glEnable(GL_TEXTURE_2D);
+	glBindTexture(GL_TEXTURE_2D, m_texWing);
+	glTexEnvi(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_MODULATE);
+	glColor3f(1.f, 1.f, 1.f);
+	glTranslatef(-kHalfLength - 0.3f, 0.25f, 0.0f);
+	DrawWingPlate(/*chord*/1.6f, /*span*/4.2f, /*thickness*/Width);
+	glBindTexture(GL_TEXTURE_2D, 0);
+	glDisable(GL_TEXTURE_2D);
+	glPopMatrix();
+
+	// --- VERTICAL FIN: textured thin plate rotated to stand up ---
+	glPushMatrix();
+	glEnable(GL_TEXTURE_2D);
+	glBindTexture(GL_TEXTURE_2D, m_texWing);
+	glTexEnvi(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_MODULATE);
+	glColor3f(1.f, 1.f, 1.f);
+	glTranslatef(-kHalfLength - 0.5f, 1.3f, 0.0f);
+	glRotatef(90.f, 0.f, 0.f, 1.f); // make the plate vertical
+	DrawWingPlate(/*chord*/2.0f, /*span*/0.6f, /*thickness*/0.28f);
+	glBindTexture(GL_TEXTURE_2D, 0);
+	glDisable(GL_TEXTURE_2D);
+	glPopMatrix();
+
+	// --- NOSE CAP + center prop (optional metal texture) ---
+	glPushMatrix();
+	glTranslatef(+kHalfLength, 0.0f, 0.0f);
+	glEnable(GL_TEXTURE_2D);
+	if (m_texMetal) glBindTexture(GL_TEXTURE_2D, m_texMetal);
+	glTexEnvi(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_MODULATE);
+	glColor3f(1.f, 1.f, 1.f);
+	static GLUquadric* qNose = nullptr;
+	if (!qNose) { qNose = gluNewQuadric(); gluQuadricTexture(qNose, GL_TRUE); gluQuadricNormals(qNose, GLU_SMOOTH); }
+	gluSphere(qNose, 0.5f, 24, 24);
+	glBindTexture(GL_TEXTURE_2D, 0);
+	glDisable(GL_TEXTURE_2D);
+
+	glTranslatef(0.6f, 0.0f, 0.0f);
+	CreatePropeller(propAngleDeg);
 	glPopMatrix();
 }
 
@@ -433,6 +635,28 @@ void CreateAirplane(float propAngleDeg)
 	glutSolidSphere(0.5f, 18, 18);
 	glTranslatef(0.6f, 0.0f, 0.0f);  // in front of nose so it’s clearly visible
 	CreatePropeller(propAngleDeg);
+	glPopMatrix();
+
+	//==== SMOKE TRAIL ====
+
+	float current_pos_x = -kHalfLength - (0.5/0.2f); // the /0.2 is for reversing the scaling 
+	float spacing =4.0f;
+
+	glPushMatrix();
+	glEnable(GL_BLEND);
+	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+	glDisable(GL_LIGHTING);
+	glColor4f(0.5f, 0.5f, 0.5f, 0.4f); // Light gray with some transparency (40%)
+	glTranslatef(current_pos_x, 0.0f, 0.0f); // Translate left
+	glScaled(2.0f, 1.0f, 1.0f); // Elogate the sphere to look more like smoke
+	for(int i=0; i< 3; i++)
+	{
+		glutSolidSphere(0.6f, 10, 10);
+		glTranslatef(-spacing, 0.0f, 0.0f);
+	}
+	glEnable(GL_LIGHTING);
+	glDisable(GL_BLEND);
+
 	glPopMatrix();
 
 }
@@ -556,6 +780,18 @@ void PositionAirplane(float angle)
 	glPopMatrix();
 }
 
+void PositionAirplaneWithTexture(float angle)
+{
+	// Create the moon orbiting the planet
+	glPushMatrix();
+	glRotatef(angle, 0.0f, 0.0f, 1.0f); // Rotate around the planet
+	glTranslatef(10.0f, 0.0f, 0.0f); // Position the airplane 5 units away from the planet
+	glRotatef(90.0f, 0.0f, 0.0f, 1.0f); // Rotate to face forward along +X axis
+	glScalef(0.2f, 0.2f, 0.2f); // Scale down the airplane
+	CreateAirplaneWithTexture(m_ProperllerAngle);
+	glPopMatrix();
+}
+
 void InitializeWindow(int windowWidth , int windowHeight)
 {
 	int screenWidth = glutGet(GLUT_SCREEN_WIDTH);
@@ -604,8 +840,10 @@ bool init(void)
 	InitializeEarthTexture();
 	InitializeMoonTexture();
 	InitializeSunTexture();
+	InitializeAirplaneTextures();
 	return true;
 }
+
 
 void PositionCamera()
 {
@@ -816,6 +1054,7 @@ void RenderScene()
 	//PositionMoon(m_PlanetAngle);
 	PositionMoonWithTexture(m_PlanetAngle);
 	PositionAirplane(m_AirplaneAngle);
+	//PositionAirplaneWithTexture(m_AirplaneAngle);
 	//PositionSun(m_PlanetAngle);
 	PositionSunWithTexture(m_PlanetAngle);
 }
