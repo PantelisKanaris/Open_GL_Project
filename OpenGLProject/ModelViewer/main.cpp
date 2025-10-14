@@ -33,8 +33,11 @@ int m_sunPositionMultyplier = 2; // Multiplier for sun position
 GLuint m_gEarthDayTex = 0;
 GLuint m_gEarthNightTex = 0;
 GLuint m_gMoonTex = 0;
+GLuint m_gSunTex = 0;
 GLUquadric* m_gEarthQuad = nullptr;
 GLUquadric* m_gMoonQuad = nullptr;
+GLUquadric* m_gSunQuad = nullptr;
+
 
 GLuint LoadTexture(const char* filename)
 {
@@ -80,7 +83,6 @@ void InitializeEarthTexture()
 
 }
 
-
 void InitializeMoonTexture()
 {
 	stbi_set_flip_vertically_on_load(1);
@@ -90,9 +92,21 @@ void InitializeMoonTexture()
 		fprintf(stderr, "Moon texture missing\n");
 	}
 	m_gMoonQuad = gluNewQuadric();
-	gluQuadricTexture(m_gMoonQuad, GL_TRUE);   // enable texture coords
+	gluQuadricTexture(m_gMoonQuad, GL_TRUE);  
 	gluQuadricNormals(m_gMoonQuad, GLU_SMOOTH);
 	glBindTexture(GL_TEXTURE_2D, m_gMoonTex);
+}
+
+void InitializeSunTexture()
+{
+	stbi_set_flip_vertically_on_load(1);  
+	m_gSunTex = LoadTexture("Textures/2k_sun.jpg"); 
+	if (!m_gSunTex) {
+		fprintf(stderr, "Sun texture missing\n");
+	}
+	m_gSunQuad = gluNewQuadric();
+	gluQuadricTexture(m_gSunQuad, GL_TRUE);
+	gluQuadricNormals(m_gSunQuad, GLU_SMOOTH);
 }
 
 // Returns day factor in [0,1] based on sun Y 
@@ -441,6 +455,54 @@ void CreateSun()
 		glDisable(GL_BLEND); 
 }
 
+void CreateSunWithTexture()
+{
+	const float coreR = 10.0f;  // your previous baseRadius
+
+	glPushMatrix();
+
+	// ===== CORE: textured, emissive (unlit) =====
+	glEnable(GL_TEXTURE_2D);
+	glBindTexture(GL_TEXTURE_2D, m_gSunTex);
+	glTexEnvi(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_MODULATE);
+
+	glDisable(GL_LIGHTING);     // self-lit look
+	glDisable(GL_BLEND);
+	glDepthMask(GL_TRUE);
+	glDepthFunc(GL_LESS);
+
+	glColor4f(1.0f, 0.8f, 0.3f, 1.0f);
+	if (m_gSunQuad) 
+	{ 
+		gluSphere(m_gSunQuad, coreR, 64, 64); 
+	}
+
+	// ===== OUTER GLOW: gentle translucent shells =====
+	glEnable(GL_BLEND);
+	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);  // soft fade instead of additive
+	glDepthMask(GL_FALSE);
+
+	glBindTexture(GL_TEXTURE_2D, 0); // color-only glow
+
+	for (int i = 1; i <= 3; ++i) 
+	{
+		float r = coreR + i * 2.0f;               // larger radius
+		float a = 0.35f - i * 0.1f;               // fade alpha
+		if (a < 0.f) a = 0.f;
+		glColor4f(1.0f, 0.9f, 0.2f, a);           // warm yellowish glow
+		glutSolidSphere(r, 40, 40);
+	}
+
+	// ===== restore state =====
+	glDisable(GL_BLEND);
+	glDepthMask(GL_TRUE);
+	glEnable(GL_LIGHTING);
+	glBindTexture(GL_TEXTURE_2D, 0);
+	glDisable(GL_TEXTURE_2D);
+
+	glPopMatrix();
+}
+
 void PositionSun(float angle)
 {
 	// Create the sun orbiting the planet
@@ -448,6 +510,16 @@ void PositionSun(float angle)
 	glRotatef(angle, 0.0f, 0.0f, 1.0f); // Rotate around the planet
 	glTranslatef(-m_DistanceOfPlanets * m_sunPositionMultyplier, 0.0f, 0.0f); // Position the sun double the distance away from the planet form the moon.
 	CreateSun();
+	glPopMatrix();
+}
+
+void PositionSunWithTexture(float angle)
+{
+	// Create the sun orbiting the planet
+	glPushMatrix();
+	glRotatef(angle, 0.0f, 0.0f, 1.0f); // Rotate around the planet
+	glTranslatef(-m_DistanceOfPlanets * m_sunPositionMultyplier, 0.0f, 0.0f); // Position the sun double the distance away from the planet form the moon.
+	CreateSunWithTexture();
 	glPopMatrix();
 }
 
@@ -531,6 +603,7 @@ bool init(void)
 	glCullFace(GL_BACK);                               //Hide the back side
 	InitializeEarthTexture();
 	InitializeMoonTexture();
+	InitializeSunTexture();
 	return true;
 }
 
@@ -743,7 +816,8 @@ void RenderScene()
 	//PositionMoon(m_PlanetAngle);
 	PositionMoonWithTexture(m_PlanetAngle);
 	PositionAirplane(m_AirplaneAngle);
-	PositionSun(m_PlanetAngle);
+	//PositionSun(m_PlanetAngle);
+	PositionSunWithTexture(m_PlanetAngle);
 }
 
 // Our Rendering Is Done Here
