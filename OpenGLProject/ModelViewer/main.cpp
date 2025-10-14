@@ -34,36 +34,34 @@ int m_sunPositionMultyplier = 2; // Multiplier for sun position
 // globals
 GLuint gMoonTex = 0;
 
-//GLuint LoadTexture(const char* filename)
-//{
-//	int width, height, channels;
-//	unsigned char* data = stbi_load(filename, &width, &height, &channels, 0);
-//	if (!data) {
-//		printf("Failed to load image: %s\n", filename);
-//		return 0;
-//	}
-//
-//	GLenum format = GL_RGB;
-//	if (channels == 1)      format = GL_RED;
-//	else if (channels == 3) format = GL_RGB;
-//	else if (channels == 4) format = GL_RGBA;
-//
-//	GLuint texID;
-//	glGenTextures(1, &texID);
-//	glBindTexture(GL_TEXTURE_2D, texID);
-//
-//	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-//	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-//	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
-//	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
-//
-//	glTexImage2D(GL_TEXTURE_2D, 0, format, width, height,
-//		0, format, GL_UNSIGNED_BYTE, data);
-//
-//	stbi_image_free(data);
-//	return texID;
-//}
+GLuint LoadTexture(const char* filename)
+{
+	int width, height, channels;
+	unsigned char* data = stbi_load(filename, &width, &height, &channels, 0);
+	if (!data) {
+		printf("Failed to load image: %s\n", filename);
+		return 0;
+	}
 
+	GLenum format = GL_RGB;
+	if (channels == 1)      format = GL_RED;
+	else if (channels == 3) format = GL_RGB;
+	else if (channels == 4) format = GL_RGBA;
+
+	GLuint texID;
+	glGenTextures(1, &texID);
+	glBindTexture(GL_TEXTURE_2D, texID);
+
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+
+	glTexImage2D(GL_TEXTURE_2D, 0, format, width, height, 0, format, GL_UNSIGNED_BYTE, data);
+
+	stbi_image_free(data);
+	return texID;
+}
 
 
 void CreateLightOfSun()

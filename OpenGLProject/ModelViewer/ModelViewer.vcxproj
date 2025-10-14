@@ -100,6 +100,7 @@
       <AdditionalIncludeDirectories Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">./include;%(AdditionalIncludeDirectories);..\glm-0.9.9.8\glm</AdditionalIncludeDirectories>
     </ClCompile>
     <ClCompile Include="MyMath.cpp" />
+    <ClCompile Include="stb_image.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="main.h" />
