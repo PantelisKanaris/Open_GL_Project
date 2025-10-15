@@ -12,6 +12,10 @@
 
 
 #define STB_IMAGE_IMPLEMENTATION
+#define KSTAR_WIDTH  800.0f   // width of starfield
+#define KSTAR_HEIGHT 800.0f   // height of starfield
+#define KSTAR_Z      -1000.0f // depth plane behind everything
+
 // Global Variables
 bool m_fullscreen;				
 bool m_culling = false;			// Culling Enabled is Mandatory for this assignment do not change
@@ -40,7 +44,7 @@ GLUquadric* m_gEarthQuad = nullptr;
 GLUquadric* m_gMoonQuad = nullptr;
 GLUquadric* m_gSunQuad = nullptr;
 GLUquadric* m_fuselageQuad = nullptr; // for textured sphere scaled to ellipsoid
-const int   m_NumberOfStars = 600;    // adjust to taste
+const int   m_NumberOfStars = 1000;    // adjust to taste
 const float kStarSphereR = 500.0f; // very large so it feels “far”
 static float m_timeStars = 0.0f; // local time accumulator for twinkle
 
@@ -67,63 +71,26 @@ float GetDayFactor()
 
 void InitializeStars()
 {
-	// optional: seed once somewhere in startup
 	srand((unsigned)time(NULL));
 
-	for (int i = 0; i < m_NumberOfStars; i++) {
-		// random direction on sphere
-		float u = Random01() * 2.0f * (float)m_PI;
-		float v = acosf(2.0f * Random01() - 1.0f);
-		float sx = sinf(v) * cosf(u);
-		float sy = sinf(v) * sinf(u);
-		float sz = cosf(v);
-
-		m_Stars[i].x = sx * kStarSphereR;
-		m_Stars[i].y = sy * kStarSphereR;
-		m_Stars[i].z = sz * kStarSphereR;
-
-		m_Stars[i].baseAlpha = 0.5f + 0.5f * Random01();   // 0.5..1.0
-		m_Stars[i].phase = Random01() * 2.0f * (float)m_PI;
-		m_Stars[i].twinkleAmp = 0.25f + 0.5f * Random01();  // 0.25..0.75
-		m_Stars[i].size = 1 + (int)(Random01() * 3.0f); // 1,2,3
+	for (int i = 0; i < m_NumberOfStars; ++i)
+	{
+		m_Stars[i].x = (float(rand()) / RAND_MAX - 0.5f) * KSTAR_WIDTH;
+		m_Stars[i].y = (float(rand()) / RAND_MAX - 0.5f) * KSTAR_HEIGHT;
+		m_Stars[i].baseAlpha = 0.5f + 0.5f * (float(rand()) / RAND_MAX);
+		m_Stars[i].phase = (float(rand()) / RAND_MAX) * 6.28318f;
+		m_Stars[i].twinkleAmp = 0.25f + 0.5f * (float(rand()) / RAND_MAX);
+		m_Stars[i].size = 1 + (int)(float(rand()) / RAND_MAX * 3.0f);
 	}
-}
-
-static void renderStarsPass(int pointSize)
-{
-	glPointSize((GLfloat)pointSize);
-	glBegin(GL_POINTS);
-	for (int i = 0; i < m_NumberOfStars; ++i) {
-		const Star& star = m_Stars[i];
-		if (star.size != pointSize) continue;
-
-		// twinkle
-		float tw = 0.5f + 0.5f * sinf(star.phase + m_timeStars * 2.0f); // speed=2
-		float alpha = star.baseAlpha * (1.0f - star.twinkleAmp + star.twinkleAmp * tw);
-
-		// global night fade
-		float day = GetDayFactor();            // 1=day, 0=night
-		float night = 1.0f - day;
-		alpha *= night;
-
-		if (alpha <= 0.002f)
-		{
-			continue;
-		}
-		glColor4f(0.9f, 0.95f, 1.0f, alpha);       // bluish-white star
-		glVertex3f(star.x, star.y, star.z);
-	}
-	glEnd();
 }
 
 void RenderStars()
 {
-	// skip if it’s full day
 	float day = GetDayFactor();
 	float night = 1.0f - day;
-	if (night <= 0.001f)
-	{
-		return;
+	if (night <= 0.001f) 
+	{ 
+		return; 
 	}
 
 	glPushAttrib(GL_ENABLE_BIT | GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_POINT_BIT);
@@ -131,20 +98,33 @@ void RenderStars()
 	glDisable(GL_LIGHTING);
 	glDisable(GL_TEXTURE_2D);
 	glEnable(GL_BLEND);
-	glBlendFunc(GL_SRC_ALPHA, GL_ONE); // or GL_ONE_MINUS_SRC_ALPHA for softer
-	glDepthMask(GL_FALSE);             // keep depth buffer untouched
+	glBlendFunc(GL_SRC_ALPHA, GL_ONE);
+	glDepthMask(GL_FALSE);
 	glDisable(GL_CULL_FACE);
 
-	// lock the star sphere to camera, so it's always "infinite"
-	glPushMatrix();
-	glTranslatef(m_camera.m_pos.x(), m_camera.m_pos.y(), m_camera.m_pos.z());
+	for (int size = 1; size <= 3; ++size)
+	{
+		glPointSize((GLfloat)size);
+		glBegin(GL_POINTS);
+		for (int i = 0; i < m_NumberOfStars; ++i)
+		{
+			if (m_Stars[i].size != size)
+			{
+				continue;
+			}
 
-	// draw by size buckets
-	renderStarsPass(1);
-	renderStarsPass(2);
-	renderStarsPass(3);
+			float tw = 0.5f + 0.5f * sinf(m_Stars[i].phase + m_timeStars * 2.0f);
+			float a = m_Stars[i].baseAlpha * (1.0f - m_Stars[i].twinkleAmp + m_Stars[i].twinkleAmp * tw);
+			a *= night;
+			if (a <= 0.002f) continue;
 
-	glPopMatrix();
+			glColor4f(0.9f, 0.95f, 1.0f, a);
+			float starZ = m_camera.m_pos.z() - 500.0f;
+			glVertex3f(m_Stars[i].x, m_Stars[i].y, starZ);
+		}
+		glEnd();
+	}
+
 	glPopAttrib();
 }
 

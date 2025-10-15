@@ -68,13 +68,13 @@ struct CameraPosition
 };
 
 
-struct Star
-{
-	float x, y, z;     // position on a large sphere.
-	float baseAlpha;   // base brightness 0..1.
-	float phase;       // random twinkle phase.
-	float twinkleAmp;  // 0..1 how much it varies.
-	float size;        // GL point size.
+struct Star {
+	float x, y;
+	float baseAlpha;
+	float phase;
+	float twinkleAmp;
+	int   size;
 };
+
 
 #endif // !1
