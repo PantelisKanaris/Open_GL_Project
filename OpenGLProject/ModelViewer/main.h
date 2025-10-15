@@ -8,7 +8,7 @@
 #include <time.h>
 void Render(void);
 void InitializeLights(void);
-bool init(void);
+bool Initialize(void);
 void Reshape(int w, int h);
 void KeyboardDownHandler(unsigned char key, int x, int y);
 void SpecialKeyHandler(int a_keys, int x, int y);
@@ -65,6 +65,16 @@ struct CameraPosition
 		m_view = vector3d(0.0f, 0.0f, 0.0f);
 		m_up = vector3d(0.0f, 1.0f, 0.0f);
 	}
+};
+
+
+struct Star
+{
+	float x, y, z;     // position on a large sphere.
+	float baseAlpha;   // base brightness 0..1.
+	float phase;       // random twinkle phase.
+	float twinkleAmp;  // 0..1 how much it varies.
+	float size;        // GL point size.
 };
 
 #endif // !1

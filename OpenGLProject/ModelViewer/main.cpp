@@ -10,26 +10,25 @@
 #include "stb_image.h"
 #include "MyMath.h"
 
+
 #define STB_IMAGE_IMPLEMENTATION
 // Global Variables
 bool m_fullscreen;				
 bool m_culling = false;			// Culling Enabled is Mandatory for this assignment do not change
 float m_aspect = 1;
-
 CameraPosition m_camera;
-
 const float m_PI = 3.1415926535897932384626433832795028;
 const float m_epsilon = 0.001;
-
 float m_PlanetAngle = 0.0f; // Angle for the planets orbit
 float m_AirplaneAngle = 0.0f; // Angle for airplane movement
 float m_ProperllerAngle = 0.0f; // Angle for propeller rotation
-float m_DistanceOfPlanets = 20.0f; //Distance for planet orbit
+float m_DistanceOfMoon = 15.0f; //Distance for planet orbit
+float m_DistanceOfSun = m_DistanceOfMoon + 10; // Distance for airplane movement
+float m_DistanceOfAirplane = 8.0f; // Height of airplane
 float m_PlanetSpeed = 1.0f; // Speed of moon orbit
 float m_airplaneSpeed = 0.2f; // Speed of airplane movement
 float m_propellerSpeed = 5.0f; // Speed of propeller rotation
 bool m_downKeyState = false; // Control key state
-int m_sunPositionMultyplier = 2; // Multiplier for sun position
 GLuint m_gEarthDayTex = 0;
 GLuint m_gEarthNightTex = 0;
 GLuint m_gMoonTex = 0;
@@ -40,9 +39,114 @@ GLuint m_texMetal = 0;   // nacelles / nose cap
 GLUquadric* m_gEarthQuad = nullptr;
 GLUquadric* m_gMoonQuad = nullptr;
 GLUquadric* m_gSunQuad = nullptr;
-
 GLUquadric* m_fuselageQuad = nullptr; // for textured sphere scaled to ellipsoid
+const int   m_NumberOfStars = 600;    // adjust to taste
+const float kStarSphereR = 500.0f; // very large so it feels “far”
+static float m_timeStars = 0.0f; // local time accumulator for twinkle
 
+Star m_Stars[m_NumberOfStars]; // make a table with stars
+
+
+
+static float Random01() 
+{ 
+	return (float)rand() / (float)RAND_MAX; 
+}
+
+// Returns day factor in [0,1] based on sun Y 
+float GetDayFactor()
+{
+	float radians = m_PlanetAngle * (m_PI / 180.0f);
+	float sunY = -sinf(radians) * m_DistanceOfSun;
+	float maxD = m_DistanceOfSun;
+	float t = (sunY + maxD) / (2.0f * maxD); // 0..1
+	// smooth a bit
+	t = t * t * (3.f - 2.f * t);
+	return t;
+}
+
+void InitializeStars()
+{
+	// optional: seed once somewhere in startup
+	srand((unsigned)time(NULL));
+
+	for (int i = 0; i < m_NumberOfStars; i++) {
+		// random direction on sphere
+		float u = Random01() * 2.0f * (float)m_PI;
+		float v = acosf(2.0f * Random01() - 1.0f);
+		float sx = sinf(v) * cosf(u);
+		float sy = sinf(v) * sinf(u);
+		float sz = cosf(v);
+
+		m_Stars[i].x = sx * kStarSphereR;
+		m_Stars[i].y = sy * kStarSphereR;
+		m_Stars[i].z = sz * kStarSphereR;
+
+		m_Stars[i].baseAlpha = 0.5f + 0.5f * Random01();   // 0.5..1.0
+		m_Stars[i].phase = Random01() * 2.0f * (float)m_PI;
+		m_Stars[i].twinkleAmp = 0.25f + 0.5f * Random01();  // 0.25..0.75
+		m_Stars[i].size = 1 + (int)(Random01() * 3.0f); // 1,2,3
+	}
+}
+
+static void renderStarsPass(int pointSize)
+{
+	glPointSize((GLfloat)pointSize);
+	glBegin(GL_POINTS);
+	for (int i = 0; i < m_NumberOfStars; ++i) {
+		const Star& star = m_Stars[i];
+		if (star.size != pointSize) continue;
+
+		// twinkle
+		float tw = 0.5f + 0.5f * sinf(star.phase + m_timeStars * 2.0f); // speed=2
+		float alpha = star.baseAlpha * (1.0f - star.twinkleAmp + star.twinkleAmp * tw);
+
+		// global night fade
+		float day = GetDayFactor();            // 1=day, 0=night
+		float night = 1.0f - day;
+		alpha *= night;
+
+		if (alpha <= 0.002f)
+		{
+			continue;
+		}
+		glColor4f(0.9f, 0.95f, 1.0f, alpha);       // bluish-white star
+		glVertex3f(star.x, star.y, star.z);
+	}
+	glEnd();
+}
+
+void RenderStars()
+{
+	// skip if it’s full day
+	float day = GetDayFactor();
+	float night = 1.0f - day;
+	if (night <= 0.001f)
+	{
+		return;
+	}
+
+	glPushAttrib(GL_ENABLE_BIT | GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_POINT_BIT);
+
+	glDisable(GL_LIGHTING);
+	glDisable(GL_TEXTURE_2D);
+	glEnable(GL_BLEND);
+	glBlendFunc(GL_SRC_ALPHA, GL_ONE); // or GL_ONE_MINUS_SRC_ALPHA for softer
+	glDepthMask(GL_FALSE);             // keep depth buffer untouched
+	glDisable(GL_CULL_FACE);
+
+	// lock the star sphere to camera, so it's always "infinite"
+	glPushMatrix();
+	glTranslatef(m_camera.m_pos.x(), m_camera.m_pos.y(), m_camera.m_pos.z());
+
+	// draw by size buckets
+	renderStarsPass(1);
+	renderStarsPass(2);
+	renderStarsPass(3);
+
+	glPopMatrix();
+	glPopAttrib();
+}
 
 GLuint LoadTexture(const char* filename)
 {
@@ -132,18 +236,6 @@ void InitializeAirplaneTextures()
 	gluQuadricNormals(m_fuselageQuad, GLU_SMOOTH);
 }
 
-// Returns day factor in [0,1] based on sun Y 
-float GetDayFactor()
-{
-	float radians = m_PlanetAngle * (m_PI / 180.0f);
-	float sunY = -sinf(radians) * m_DistanceOfPlanets * m_sunPositionMultyplier;
-	float maxD = m_DistanceOfPlanets * m_sunPositionMultyplier;
-	float t = (sunY + maxD) / (2.0f * maxD); // 0..1
-	// smooth a bit
-	t = t * t * (3.f - 2.f * t);
-	return t;
-}
-
 void CreatePlanetUsingTexture()
 {
 	// 0..1 where 1 = day, 0 = night, already smoothed in GetDayFactor()
@@ -180,7 +272,10 @@ void CreatePlanetUsingTexture()
 	glDepthFunc(GL_LESS);
 
 	glColor3f(dayW, dayW, dayW);               // scale contribution
-	if (m_gEarthQuad) gluSphere(m_gEarthQuad, 5.0, 96, 96);
+	if (m_gEarthQuad)
+	{
+		gluSphere(m_gEarthQuad, 5.0, 96, 96);
+	}
 
 	// ===== PASS 2: Night texture (unlit), additive over the first pass =====
 	glBindTexture(GL_TEXTURE_2D, m_gEarthNightTex);
@@ -228,8 +323,8 @@ void CreateLightOfSun()
 {
 	// Calculate the global position of the sun 
 	float radians = m_PlanetAngle * (m_PI / 180.0f);
-	float sunX = -cos(radians) * m_DistanceOfPlanets * m_sunPositionMultyplier;
-	float sunY = -sin(radians) * m_DistanceOfPlanets * m_sunPositionMultyplier;
+	float sunX = -cos(radians) * m_DistanceOfSun;
+	float sunY = -sin(radians) * m_DistanceOfSun;
 	float sunZ = 0.0f;
 
 	glEnable(GL_LIGHT1);
@@ -241,7 +336,7 @@ void CreateLightOfSun()
 	// Calculate brightness based on sun's vertical position (Y coordinate)
 	// When sun is at top (positive Y): bright
 	// When sun is at bottom (negative Y): dim
-	float maxDistance = m_DistanceOfPlanets * m_sunPositionMultyplier;
+	float maxDistance = m_DistanceOfSun;
 	float brightnessMultiplier = (sunY + maxDistance) / (2.0f * maxDistance); // Normalize to [0, 1]
 	
 	
@@ -340,9 +435,6 @@ void ChangeColourOfBackground()
 	float radians = normalizedAngle * 2.0f * m_PI; // Convert to radians
 	float t = (-sin(radians) + 1.0f) / 2.0f; 
 
-	// Apply smoothstep for smoother transitions
-	t = t * t * (3.0f - 2.0f * t);
-
 	// Interpolate between night and day colors for each RGB component
 	float r = LinearInterpolation(night.x(), day.x(), t);
 	float g = LinearInterpolation(night.y(), day.y(), t);
@@ -367,7 +459,6 @@ void CreateTheMoon()
 	glColor3f(0.25f, 0.25f, 0.25f); // Much darker gray (was 0.5, 0.5, 0.5)
 	glutSolidSphere(3.0, 30, 30);
 }
-
 
 // Draw a double-sided textured rectangle centered at origin in YZ plane,
 // with size: chord along +Y/-Y, span along +Z/-Z, and a small thickness (X).
@@ -427,7 +518,6 @@ static void DrawTexturedSphere(GLUquadric* q, float r, int sl = 48, int st = 48)
 	gluSphere(q, r, sl, st); // GLU provides (s,t) coords when quadric texture is TRUE
 }
 
-
 void CreatePropeller(float angleDeg, float hubRadius = 0.35f, float bladeSpan = 2.2f, float bladeThickness = 0.3f)
 {
 	glPushMatrix();
@@ -453,7 +543,6 @@ void CreatePropeller(float angleDeg, float hubRadius = 0.35f, float bladeSpan = 
 
 	glPopMatrix();
 }
-
 
 void CreateAirplaneWithTexture(float propAngleDeg)
 {
@@ -665,7 +754,7 @@ void CreateSun()
 {
 	glEnable(GL_BLEND);
 	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-	float baseRadius = 10.0f;
+	float baseRadius = 1.0f;
 	float baseAlpha = 1.0f;
 
 		for(int i=0; i<4; i++)
@@ -681,7 +770,7 @@ void CreateSun()
 
 void CreateSunWithTexture()
 {
-	const float coreR = 10.0f;  // your previous baseRadius
+	const float coreR = 5.0f;  // your previous baseRadius
 
 	glPushMatrix();
 
@@ -732,7 +821,7 @@ void PositionSun(float angle)
 	// Create the sun orbiting the planet
 	glPushMatrix();
 	glRotatef(angle, 0.0f, 0.0f, 1.0f); // Rotate around the planet
-	glTranslatef(-m_DistanceOfPlanets * m_sunPositionMultyplier, 0.0f, 0.0f); // Position the sun double the distance away from the planet form the moon.
+	glTranslatef(-m_DistanceOfSun, 0.0f, 0.0f); // Position the sun double the distance away from the planet form the moon.
 	CreateSun();
 	glPopMatrix();
 }
@@ -742,7 +831,7 @@ void PositionSunWithTexture(float angle)
 	// Create the sun orbiting the planet
 	glPushMatrix();
 	glRotatef(angle, 0.0f, 0.0f, 1.0f); // Rotate around the planet
-	glTranslatef(-m_DistanceOfPlanets * m_sunPositionMultyplier, 0.0f, 0.0f); // Position the sun double the distance away from the planet form the moon.
+	glTranslatef(-m_DistanceOfSun, 0.0f, 0.0f); // Position the sun double the distance away from the planet form the moon.
 	CreateSunWithTexture();
 	glPopMatrix();
 }
@@ -752,7 +841,7 @@ void PositionMoon(float angle)
 	// Create the moon orbiting the planet
 	glPushMatrix();
 	glRotatef(angle, 0.0f, 0.0f, 1.0f); // Rotate around the planet
-	glTranslatef(m_DistanceOfPlanets, 0.0f, 0.0f); // Position the moon 5 units away from the planet
+	glTranslatef(m_DistanceOfMoon, 0.0f, 0.0f); // Position the moon 5 units away from the planet
 	CreateTheMoon();
 	glPopMatrix();
 
@@ -763,7 +852,7 @@ void PositionMoonWithTexture(float angle)
 	// Create the moon orbiting the planet
 	glPushMatrix();
 	glRotatef(angle, 0.0f, 0.0f, 1.0f); // Rotate around the planet
-	glTranslatef(m_DistanceOfPlanets, 0.0f, 0.0f); // Position the moon 5 units away from the planet
+	glTranslatef(m_DistanceOfMoon, 0.0f, 0.0f); // Position the moon 5 units away from the planet
 	CreateTheMoonWithTexture();
 	glPopMatrix();
 }
@@ -773,7 +862,7 @@ void PositionAirplane(float angle)
 	// Create the moon orbiting the planet
 	glPushMatrix();
 	glRotatef(angle, 0.0f, 0.0f, 1.0f); // Rotate around the planet
-	glTranslatef(10.0f, 0.0f, 0.0f); // Position the airplane 5 units away from the planet
+	glTranslatef(m_DistanceOfAirplane, 0.0f, 0.0f); // Position the airplane 5 units away from the planet
 	glRotatef(90.0f, 0.0f, 0.0f, 1.0f); // Rotate to face forward along +X axis
 	glScalef(0.2f, 0.2f, 0.2f); // Scale down the airplane
 	CreateAirplane(m_ProperllerAngle);
@@ -821,7 +910,7 @@ void InitializeLights(void) {
 }
 
 // Our GL Specific Initializations. Returns true On Success, false On Fail.
-bool init(void)
+bool Initialize(void)
 {
     glPixelStorei(GL_UNPACK_ALIGNMENT, 1);             // Pixel Storage Mode To Byte Alignment
 	glEnable(GL_TEXTURE_2D);                           // Enable Texture Mapping 
@@ -841,6 +930,7 @@ bool init(void)
 	InitializeMoonTexture();
 	InitializeSunTexture();
 	InitializeAirplaneTextures();
+	InitializeStars();
 	return true;
 }
 
@@ -853,7 +943,7 @@ void PositionCamera()
 	gluPerspective(45.0f, m_aspect, 0.1, 1000.0);
 
 	//postion the camera to look at the origin from far away
-	m_camera.m_pos = vector3d(0.0f, 0.0f, 150.0f);
+	m_camera.m_pos = vector3d(0.0f, 0.0f, 80.0f);
 	m_camera.m_view = vector3d(0.0f, 0.0f, 0.0f);
 	m_camera.m_up = vector3d(0.0f, 1.0f, 0.0f);   // Y is up 
 	glMatrixMode(GL_MODELVIEW);
@@ -1012,7 +1102,7 @@ int main(int argc, char** argv)
 	glutInitDisplayMode(GLUT_DEPTH | GLUT_RGBA | GLUT_DOUBLE); 
 	InitializeWindow(1000,1000);
 	glutCreateWindow("EPL426"); // Window Title
-	if (!init()) {                                   // Our Initialization
+	if (!Initialize()) {                                   // Our Initialization
 		fprintf(stderr,"Initialization failed.");
 		return -1;
 	}
@@ -1035,7 +1125,7 @@ void Update()
 	static double lastTime = currentTime;
 	double deltaTime = currentTime - lastTime;
 	lastTime = currentTime;
-
+	m_timeStars += deltaTime; // used for twinkle
 	m_PlanetAngle = fmod(m_PlanetAngle + m_PlanetSpeed * (float)deltaTime * 60.0f, 360.0f);
 	m_AirplaneAngle = fmod( m_AirplaneAngle + m_airplaneSpeed * (float)deltaTime * 60.0f,360.0f);
 	m_ProperllerAngle = fmod(m_ProperllerAngle + m_propellerSpeed * (float)deltaTime * 60.0f,360.0f);
@@ -1077,6 +1167,8 @@ void Render(void)
 
 	glLoadIdentity();
 	RenderCameraView();
+
+	RenderStars();
 	RenderScene();
 
     // Swap The Buffers To Make Our Rendering Visible
