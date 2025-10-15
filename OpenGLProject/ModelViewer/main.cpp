@@ -50,8 +50,6 @@ static float m_timeStars = 0.0f; // local time accumulator for twinkle
 
 Star m_Stars[m_NumberOfStars]; // make a table with stars
 
-
-
 static float Random01() 
 { 
 	return (float)rand() / (float)RAND_MAX; 
@@ -102,7 +100,7 @@ void RenderStars()
 	glDepthMask(GL_FALSE);
 	glDisable(GL_CULL_FACE);
 
-	for (int size = 1; size <= 3; ++size)
+	for (int size = 1; size <= 3; size++)
 	{
 		glPointSize((GLfloat)size);
 		glBegin(GL_POINTS);
@@ -265,7 +263,10 @@ void CreatePlanetUsingTexture()
 	glDepthFunc(GL_EQUAL);                     // draw exactly where pass 1 drew
 
 	glColor3f(1.0f, 1.0f, 1.0f);         // scale night contribution
-	if (m_gEarthQuad) gluSphere(m_gEarthQuad, 5.0, 96, 96);
+	if (m_gEarthQuad) 
+	{ 
+		gluSphere(m_gEarthQuad, 5.0, 96, 96); 
+	}
 
 	// ---- restore render state ----
 	glDisable(GL_BLEND);
@@ -961,6 +962,10 @@ void KeyboardHandler(unsigned char key, int x, int y)
 		m_camera.m_up = vector3d(0.0f, 1.0f, 0.0f);
 		break;
 	case '2':
+
+		m_camera.m_pos = vector3d(0.0f, 0.0f, 50.0f);
+		m_camera.m_view = vector3d(0.0f, 0.0f, 0.0f);
+		m_camera.m_up = vector3d(0.0f, 1.0f, 0.0f);
 		break;
 	case 'p':
 
