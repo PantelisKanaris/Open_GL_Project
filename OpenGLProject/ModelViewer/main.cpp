@@ -50,12 +50,27 @@ static float m_timeStars = 0.0f; // local time accumulator for twinkle
 
 Star m_Stars[m_NumberOfStars]; // make a table with stars
 
+// -----------------------------------------------------------------------------
+// Helper: random float in [0,1].
+// Small utility used when seeding star attributes.
+// Using (float)rand/RAND_MAX is fine for visuals; not for crypto.
+// Randomness is deterministic per run due to srand(time(NULL)).
+// --------------------
 static float Random01() 
 { 
 	return (float)rand() / (float)RAND_MAX; 
 }
 
-// Returns day factor in [0,1] based on sun Y 
+// =====================
+// Lighting / Time helpers
+// =====================
+// -----------------------------------------------------------------------------
+// GetDayFactor
+// • Computes how “day-like” the scene is from the sun's Y height.
+// • Maps sunY from [-R,+R] → [0,1] and applies smoothstep for soft transitions.
+// • 1.0 = day (sun high), 0.0 = night (sun low).
+// • Used by stars fading, background color, and Earth day/night texture blend.
+// -----------------------------------------------------------------------------
 float GetDayFactor()
 {
 	float radians = m_PlanetAngle * (m_PI / 180.0f);
@@ -67,6 +82,16 @@ float GetDayFactor()
 	return t;
 }
 
+// =====================
+// Starfield
+// =====================
+// -----------------------------------------------------------------------------
+// InitializeStars
+// • Fills an array with positions, base alpha, twinkle phase/amplitude, and size.
+// • Positions lie on a large plane behind the camera (fake sky dome feel).
+// • Sizes 1..3 let us draw in 3 point batches for a cheap size distribution.
+// • srand(time) ensures variety per run; visuals only.
+// -----------------------------------------------------------------------------
 void InitializeStars()
 {
 	srand((unsigned)time(NULL));
@@ -82,6 +107,13 @@ void InitializeStars()
 	}
 }
 
+// -----------------------------------------------------------------------------
+// RenderStars
+// • Draws twinkling stars with additive alpha, only visible during night.
+// • Twinkle = sin(phase + t) scaled by star-specific amplitude.
+// • Uses GL_POINTS in 3 passes (size 1..3) for quick variation.
+// • Depth writes are off; points always render behind the scene.
+// -----------------------------------------------------------------------------
 void RenderStars()
 {
 	float day = GetDayFactor();
@@ -126,6 +158,16 @@ void RenderStars()
 	glPopAttrib();
 }
 
+// =====================
+// Texture loading
+// =====================
+// -----------------------------------------------------------------------------
+// LoadTexture
+// • Loads an image via stb_image and uploads to GL as GL_TEXTURE_2D.
+// • Picks the correct external format from channel count (R, RGB, RGBA).
+// • Sets simple linear filtering and REPEAT wrapping for S/T.
+// • Returns GL texture id (0 on failure), caller binds/uses it later.
+// -----------------------------------------------------------------------------
 GLuint LoadTexture(const char* filename)
 {
 	int width, height, channels;
@@ -155,6 +197,13 @@ GLuint LoadTexture(const char* filename)
 	return texID;
 }
 
+// -----------------------------------------------------------------------------
+// InitializeEarthTexture
+// • Loads day & night Earth textures; creates a GLU quadric with texcoords.
+// • Quadric is used to render a sphere with (s,t) automatically generated.
+// • Textures are later blended in CreatePlanetUsingTexture (see there!).
+// • Logs if assets are missing for easier debugging.
+// -----------------------------------------------------------------------------
 void InitializeEarthTexture()
 {
 	stbi_set_flip_vertically_on_load(1);
@@ -170,6 +219,13 @@ void InitializeEarthTexture()
 
 }
 
+// -----------------------------------------------------------------------------
+// InitializeMoonTexture
+// • Loads Moon texture, sets up a textured GLU quadric for the sphere.
+// • Moon uses standard lighting with texture modulation.
+// • Texture remains bound only during moon drawing.
+// • Logs an error if texture is missing.
+// -----------------------------------------------------------------------------
 void InitializeMoonTexture()
 {
 	stbi_set_flip_vertically_on_load(1);
@@ -184,6 +240,13 @@ void InitializeMoonTexture()
 	glBindTexture(GL_TEXTURE_2D, m_gMoonTex);
 }
 
+// -----------------------------------------------------------------------------
+// InitializeSunTexture
+// • Loads a Sun texture for the emissive core rendering.
+// • Creates a GLU quadric that provides sphere texcoords.
+// • Outer glow is rendered color-only (no texture) with alpha shells.
+// • Logs if the sun texture can't be found.
+// -----------------------------------------------------------------------------
 void InitializeSunTexture()
 {
 	stbi_set_flip_vertically_on_load(1);  
@@ -196,6 +259,13 @@ void InitializeSunTexture()
 	gluQuadricNormals(m_gSunQuad, GLU_SMOOTH);
 }
 
+// -----------------------------------------------------------------------------
+// InitializeAirplaneTextures
+// • Loads fuselage/wing/metal textures used on airplane parts.
+// • Prepares a GLU quadric for fuselage (textured sphere scaled to ellipsoid).
+// • Texture env mode is set per draw call (MODULATE) to combine with lighting.
+// • Prints helpful logs if any asset is missing.
+// -----------------------------------------------------------------------------
 void InitializeAirplaneTextures()
 {
 	stbi_set_flip_vertically_on_load(1);
@@ -214,6 +284,17 @@ void InitializeAirplaneTextures()
 	gluQuadricNormals(m_fuselageQuad, GLU_SMOOTH);
 }
 
+// =====================
+// Earth rendering with DAY/NIGHT texture blend (center planet texture switching)
+// =====================
+// -----------------------------------------------------------------------------
+// CreatePlanetUsingTexture **(CENTER PLANET TEXTURE TRANSITION)**
+// • Two-pass rendering on the same geometry and depth:
+// 1) Day texture lit, depth write ON; color scaled by day weight.
+// 2) Night texture UNLIT, ADDITIVE blend, depth func = GL_EQUAL for exact overlap.
+// • dayW/nightW come from a smoothed day factor for gentle city-lights transition.
+// • Restores GL state at the end to avoid bleeding into other draws.
+// -----------------------------------------------------------------------------
 void CreatePlanetUsingTexture()
 {
 	// 0..1 where 1 = day, 0 = night, already smoothed in GetDayFactor()
@@ -278,6 +359,12 @@ void CreatePlanetUsingTexture()
 	glPopMatrix();
 }
 
+// -----------------------------------------------------------------------------
+// CreateTheMoonWithTexture
+// • Textured GLU sphere for the moon using lighting+texture modulation.
+// • White vertex color preserves texture color; sphere tesselation 48×48.
+// • Texturing disabled afterwards to keep GL state clean.
+// -----------------------------------------------------------------------------
 void CreateTheMoonWithTexture()
 {
 	glPushMatrix();
@@ -300,6 +387,16 @@ void CreateTheMoonWithTexture()
 	glPopMatrix();
 }
 
+// =====================
+// Dynamic lights
+// =====================
+// -----------------------------------------------------------------------------
+// CreateLightOfSun **(SUN INTENSITY SCALES WITH Y HEIGHT)**
+// • Positions GL_LIGHT1 at the animated sun location.
+// • Maps sunY to [0..1] → brightnessMultiplier; adds a small night floor.
+// • Scales ambient/diffuse/specular by that multiplier for day↔night effect.
+// • Flat attenuation so height dominates perceived intensity.
+// -----------------------------------------------------------------------------
 void CreateLightOfSun()
 {
 	// Calculate the global position of the sun 
@@ -366,6 +463,13 @@ void CreateLightOfSun()
 	//glPopMatrix();
 }
 
+// -----------------------------------------------------------------------------
+// CreateLightOfAirplane
+// • Attaches GL_LIGHT2 to the orbiting airplane (cool white nav-light feel).
+// • Position recomputed from current airplane orbital angle.
+// • Modest ambient, strong diffuse/specular for shiny highlights.
+// • Very light attenuation keeps it visible around the orbit.
+// -----------------------------------------------------------------------------
 void CreateLightOfAirplane()
 {
 	// Calculate the global position of the airplane (same logic as PositionAirplane)
@@ -403,6 +507,16 @@ void CreateLightOfAirplane()
 	//glPopMatrix();
 }
 
+// =====================
+// Background color transition (sky gradient day↔night)
+// =====================
+// -----------------------------------------------------------------------------
+// ChangeColourOfBackground **(BACKGROUND TRANSITION)**
+// • Computes a sine-based t that cycles night→day→night as the sun orbits.
+// • Interpolates per-channel between black night and muted blue day.
+// • Sets glClearColor each frame; clear happens in Render().
+// • Visually syncs with star brightness and Earth texture blend.
+// -----------------------------------------------------------------------------
 void ChangeColourOfBackground()
 {
 	const vector3d night = { 0.0f, 0.0f, 0.0f };
@@ -425,6 +539,15 @@ void ChangeColourOfBackground()
 	glClearColor(r, g, b, 1.0f);
 }
 
+// =====================
+// Simple solid spheres (fallbacks)
+// =====================
+// -----------------------------------------------------------------------------
+// CreateTheCenterPlanet
+// • Draws a plain, lit sphere at the origin (fallback/testing helper).
+// • Color is a desaturated blue to read well with lighting.
+// • Typically unused when textured Earth rendering is active.
+// -----------------------------------------------------------------------------
 void CreateTheCenterPlanet(void)
 {
 	// Create the central planet at the origin - more realistic earth-like blue
@@ -434,6 +557,12 @@ void CreateTheCenterPlanet(void)
 	glPopMatrix();
 }
 
+// -----------------------------------------------------------------------------
+// CreateTheMoon
+// • Untextured moon variant for testing.
+// • Dark gray to differentiate from Earth; 30×30 tesselation.
+// • Replaced by textured version in the final scene.
+// -----------------------------------------------------------------------------
 void CreateTheMoon()
 {
 	// Create the moon orbiting the planet - darker, more realistic gray
@@ -441,8 +570,15 @@ void CreateTheMoon()
 	glutSolidSphere(3.0, 30, 30);
 }
 
-// Draw a double-sided textured rectangle centered at origin in YZ plane,
-// with size: chord along +Y/-Y, span along +Z/-Z, and a small thickness (X).
+// =====================
+// Geometry helpers (wings/props)
+// =====================
+// -----------------------------------------------------------------------------
+// DrawWingPlate
+// • Builds a thin rectangular prism centered at origin (Y×Z oriented).
+// • Provides texcoords on every face so a single texture can wrap nicely.
+// • Normals approximate a flat plate; good enough for specular highlights.
+// -----------------------------------------------------------------------------
 static void DrawWingPlate(float chord, float span, float thickness)
 {
 	float y = chord * 0.5f;
@@ -499,6 +635,17 @@ static void DrawTexturedSphere(GLUquadric* q, float r, int sl = 48, int st = 48)
 	gluSphere(q, r, sl, st); // GLU provides (s,t) coords when quadric texture is TRUE
 }
 
+//------------------------------------------------------------------------------
+// CreatePropeller
+// Renders a two-blade prop spinning around +X.
+// - angleDeg    : rotation around +X in degrees
+// - hubRadius   : not currently drawn (kept for future hub geometry)
+// - bladeSpan   : blade length along +Y/-Y after rotation
+// - bladeThickness : thickness on X before the first rotate
+// Notes:
+// * Each blade is nudged on +Z to avoid z-fighting with a hub.
+// * Second blade is rotated 90° around +X for the cross shape.
+//------------------------------------------------------------------------------
 void CreatePropeller(float angleDeg, float hubRadius = 0.35f, float bladeSpan = 2.2f, float bladeThickness = 0.3f)
 {
 	glPushMatrix();
@@ -525,6 +672,15 @@ void CreatePropeller(float angleDeg, float hubRadius = 0.35f, float bladeSpan = 
 	glPopMatrix();
 }
 
+//============================================================
+// Function: CreateAirplaneWithTexture
+// Purpose : Renders a detailed textured airplane model,
+//           complete with fuselage, wings, engines, propellers,
+//           stabilizers, and a nose cap using OpenGL & GLU.
+//
+// Parameters:
+//     propAngleDeg - current rotation angle of the propellers
+//============================================================
 void CreateAirplaneWithTexture(float propAngleDeg)
 {
 	static const float kBodyRadius = 2.0f;   // base sphere radius
@@ -637,6 +793,11 @@ void CreateAirplaneWithTexture(float propAngleDeg)
 	glPopMatrix();
 }
 
+//==============================================================================
+// CreateAirplane (non-textured)
+// Builds the colored, untextured variant of the airplane. Uses basic GLUT
+// primitives, with a smoke trail rendered using alpha blending.
+//==============================================================================
 void CreateAirplane(float propAngleDeg)
 {
 
@@ -731,6 +892,11 @@ void CreateAirplane(float propAngleDeg)
 
 }
 
+//------------------------------------------------------------------------------
+// CreateSun
+// Renders a simple multi-layer glowing sun using nested translucent spheres.
+// Uses SRC_ALPHA, ONE_MINUS_SRC_ALPHA for a soft halo.
+//------------------------------------------------------------------------------
 void CreateSun()
 {
 	glEnable(GL_BLEND);
@@ -749,6 +915,15 @@ void CreateSun()
 		glDisable(GL_BLEND); 
 }
 
+
+//------------------------------------------------------------------------------
+// CreateSunWithTexture
+// Textured sun core (unlit/emissive look) plus translucent color-only shells.
+// Notes:
+// * Lighting is disabled for the core to avoid dulling the texture.
+// * Depth writes are disabled for the glow shells to reduce halo artifacts.
+// * Texture is unbound for the shells so only vertex color is used.
+//------------------------------------------------------------------------------
 void CreateSunWithTexture()
 {
 	const float coreR = 5.0f;  // your previous baseRadius
@@ -797,6 +972,11 @@ void CreateSunWithTexture()
 	glPopMatrix();
 }
 
+//------------------------------------------------------------------------------
+// PositionSun / PositionSunWithTexture
+// Places the (textured or untextured) sun in circular orbit around origin.
+// angle is in degrees; rotation is around +Z (XY-plane orbit).
+//------------------------------------------------------------------------------
 void PositionSun(float angle)
 {
 	// Create the sun orbiting the planet
@@ -817,6 +997,10 @@ void PositionSunWithTexture(float angle)
 	glPopMatrix();
 }
 
+//------------------------------------------------------------------------------
+// PositionMoon / PositionMoonWithTexture
+// Places the (textured or untextured) moon in circular orbit.
+//------------------------------------------------------------------------------
 void PositionMoon(float angle)
 {
 	// Create the moon orbiting the planet
@@ -838,6 +1022,11 @@ void PositionMoonWithTexture(float angle)
 	glPopMatrix();
 }
 
+
+//------------------------------------------------------------------------------
+// PositionAirplane / PositionAirplaneWithTexture
+// Orbits the airplane around origin in XY, then rotates to face +X and scales.
+//------------------------------------------------------------------------------
 void PositionAirplane(float angle)
 {
 	// Create the moon orbiting the planet
@@ -862,6 +1051,11 @@ void PositionAirplaneWithTexture(float angle)
 	glPopMatrix();
 }
 
+
+//------------------------------------------------------------------------------
+// InitializeWindow
+// Sets GLUT window size and centers it on the primary screen.
+//------------------------------------------------------------------------------
 void InitializeWindow(int windowWidth , int windowHeight)
 {
 	int screenWidth = glutGet(GLUT_SCREEN_WIDTH);
@@ -873,6 +1067,11 @@ void InitializeWindow(int windowWidth , int windowHeight)
 	glutInitWindowPosition(centerX, centerY); // Window Position
 }
 
+//------------------------------------------------------------------------------
+// InitializeLights
+// Enables fixed-function lighting (global). Light0 setup is left commented;
+// if needed, uncomment and configure the light properties below.
+//------------------------------------------------------------------------------
 void InitializeLights(void) {
 
 	/*glEnable(GL_LIGHT0);*/
@@ -890,7 +1089,12 @@ void InitializeLights(void) {
 	//glLightfv(GL_LIGHT0, GL_SPECULAR, light0Specular);
 }
 
-// Our GL Specific Initializations. Returns true On Success, false On Fail.
+//------------------------------------------------------------------------------
+// Initialize
+// Sets core GL state, enables depth test and texture mapping, configures
+// material color tracking, and initializes textures/geometry data.
+// Returns true on success.
+//------------------------------------------------------------------------------
 bool Initialize(void)
 {
     glPixelStorei(GL_UNPACK_ALIGNMENT, 1);             // Pixel Storage Mode To Byte Alignment
@@ -916,6 +1120,11 @@ bool Initialize(void)
 }
 
 
+//------------------------------------------------------------------------------
+// PositionCamera
+// Resets projection with a 45° perspective and positions a simple look-at
+// camera aimed at the origin from +Z = 80.
+//------------------------------------------------------------------------------
 void PositionCamera()
 {
 
@@ -931,7 +1140,10 @@ void PositionCamera()
 
 }
 
-// Our Reshaping Handler (Required Even In Fullscreen-Only Modes)
+//------------------------------------------------------------------------------
+// Reshape
+// Updates viewport and aspect ratio, rebuilds projection, and refreshes lights.
+//------------------------------------------------------------------------------
 void Reshape(int w, int h)
 {
 	glViewport(0, 0, w, h);
@@ -944,7 +1156,17 @@ void Reshape(int w, int h)
 	InitializeLights();
 }
 
-// Our Keyboard Handler (Normal Keys)
+//------------------------------------------------------------------------------
+// KeyboardHandler
+// Handles ASCII keys. Arrow-down acts as a modifier in this app by toggling
+// m_downKeyState; when true it inverts the sign of 'change' for speed keys.
+// Keys:
+//   '1','2'  : camera presets
+//   'p','s','a' : planet/prop/airplane speed ±1 (clamped to >0.0)
+//   'r'      : reset speeds to defaults
+//   '+'/'_'  : dolly camera along Z
+//   ESC      : quit
+//------------------------------------------------------------------------------
 void KeyboardHandler(unsigned char key, int x, int y)
 {
 	float change = 1.0f;
@@ -969,7 +1191,7 @@ void KeyboardHandler(unsigned char key, int x, int y)
 		break;
 	case 'p':
 
-		if (m_PlanetSpeed + change < 0.0f) // Prevent negative speed
+		if (m_PlanetSpeed + change <= 0.0f) // Prevent negative speed
 		{
 			m_PlanetSpeed = 0.1;
 			break;
@@ -977,7 +1199,7 @@ void KeyboardHandler(unsigned char key, int x, int y)
 		m_PlanetSpeed += change;
 		break;
 	case 's':
-		if (m_propellerSpeed + change < 0.0f) // Prevent negative speed
+		if (m_propellerSpeed + change <= 0.0f) // Prevent negative speed
 		{
 			m_propellerSpeed = 0.1;
 			break;
@@ -987,7 +1209,7 @@ void KeyboardHandler(unsigned char key, int x, int y)
 		break;
 	case 'a':
 	{
-		if (m_airplaneSpeed + change < 0.0f) // Prevent negative speed
+		if (m_airplaneSpeed + change <= 0.0f) // Prevent negative speed
 		{
 			m_airplaneSpeed = 0.1;
 			break;
@@ -1018,6 +1240,10 @@ void KeyboardHandler(unsigned char key, int x, int y)
 	glutPostRedisplay();
 }
 
+//------------------------------------------------------------------------------
+// RenderCameraView
+// Applies the current camera using gluLookAt.
+//------------------------------------------------------------------------------
 void RenderCameraView()
 {
 	// Position The Camera to look at the origin 
@@ -1026,7 +1252,12 @@ void RenderCameraView()
 			  m_camera.m_up.x(), m_camera.m_up.y(), m_camera.m_up.z());
 }
 
-// Our Keyboard Handler For Special Keys (Like Arrow Keys And Function Keys)
+//------------------------------------------------------------------------------
+// SpecialKeyHandler
+// Handles GLUT special keys (F1, arrows).
+//  F1        : toggle fullscreen
+//  Up/Down   : set m_downKeyState (used as +/- speed modifier in keyboard)
+//------------------------------------------------------------------------------
 void SpecialKeyHandler(int a_keys, int x, int y)
 {
 
@@ -1059,6 +1290,11 @@ void SpecialKeyHandler(int a_keys, int x, int y)
 	glutPostRedisplay();
 }
 
+//------------------------------------------------------------------------------
+// MouseButtonHandler
+// Placeholder for mouse interactions. Currently no behavior.
+// Left/Right button branches are in place for future use.
+//------------------------------------------------------------------------------
 void MouseButtonHandler(int button, int state, int x, int y) {
 	// only start motion if the left button is pressed
 	if (button == GLUT_LEFT_BUTTON) {
@@ -1080,7 +1316,10 @@ void MouseButtonHandler(int button, int state, int x, int y) {
 	}
 }
 
-// Main Function For Bringing It All Together.
+//------------------------------------------------------------------------------
+// main
+// GLUT bootstrap: window/context creation, init, and callback registration.
+//------------------------------------------------------------------------------
 int main(int argc, char** argv)
 {
 	glutInit(&argc, argv);                          
@@ -1101,9 +1340,12 @@ int main(int argc, char** argv)
 	return 0;
 }
 
-/// <summary>
-/// This function updates the angles for the moon orbit and propeller rotation based on elapsed time.
-/// </summary>
+
+//------------------------------------------------------------------------------
+// Update
+// Computes delta time from GLUT's timer and advances orbital/rotation angles.
+// * Angles wrap to [0,360) via fmod to avoid precision growth.
+//------------------------------------------------------------------------------
 void Update()
 {
 	double currentTime = glutGet(GLUT_ELAPSED_TIME) / 1000.0;
@@ -1134,7 +1376,11 @@ void RenderScene()
 	PositionSunWithTexture(m_PlanetAngle);
 }
 
-// Our Rendering Is Done Here
+//------------------------------------------------------------------------------
+// RenderScene
+// Per-frame scene graph: updates animation state, sets dynamic lights,
+// and draws planet, moon, airplane, and sun in their current positions.
+//------------------------------------------------------------------------------
 void Render(void)   
 {
 	ChangeColourOfBackground();
